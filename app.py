@@ -28,7 +28,7 @@ for f in FIELDS:
 st.session_state.setdefault("currency", "")
 st.session_state.setdefault("name", "")
 st.session_state.setdefault("loaded", False)
-for _k in ("an_mean", "an_low", "an_high"):
+for _k in ("an_mean", "an_median", "an_low", "an_high"):
     st.session_state.setdefault(_k, 0.0)
 st.session_state.setdefault("an_n", 0)
 
@@ -94,6 +94,7 @@ def fetch_data(code: str):
                 "eps_2026": None, "eps_2027": None,
                 "rev_2026": None, "rev_2027": None,
                 "target_mean": info.get("targetMeanPrice"),
+                "target_median": info.get("targetMedianPrice"),
                 "target_low": info.get("targetLowPrice"),
                 "target_high": info.get("targetHighPrice"),
                 "n_analysts": info.get("numberOfAnalystOpinions"),
@@ -143,6 +144,7 @@ def apply_fetched(data: dict):
     st.session_state["sps_2027"] = (st.session_state["rev_2027"] / sh) if sh else 0.0
     # 애널리스트 목표주가 컨센서스
     st.session_state["an_mean"] = float(data.get("target_mean") or 0.0)
+    st.session_state["an_median"] = float(data.get("target_median") or 0.0)
     st.session_state["an_low"] = float(data.get("target_low") or 0.0)
     st.session_state["an_high"] = float(data.get("target_high") or 0.0)
     st.session_state["an_n"] = int(data.get("n_analysts") or 0)
@@ -465,22 +467,22 @@ if an_mean and ref_base:
     an_low = st.session_state.get("an_low", 0.0)
     an_high = st.session_state.get("an_high", 0.0)
     an_n = st.session_state.get("an_n", 0)
-    mean_mult = an_mean / ref_base
+    an_median = st.session_state.get("an_median", 0.0) or an_mean
+    med_mult = an_median / ref_base
     with st.container(border=True):
         st.markdown("**📋 애널리스트 기준 배수 (참고)**"
                     + (f"　·　분석가 {an_n}명" if an_n else ""))
         ac1, ac2 = st.columns(2)
         ac1.metric(f"현재 {method}", f"{cur_mult:,.1f}배")
-        delta = f"현재比 {(mean_mult / cur_mult - 1) * 100:+.0f}%" if cur_mult else None
-        ac2.metric(f"애널리스트 평균 목표 {method}", f"{mean_mult:,.1f}배", delta, delta_color="off")
-        rng = ""
-        if an_low and an_high:
-            rng = (f"　개별 애널리스트 최저~최고: **{an_low / ref_base:,.1f} ~ {an_high / ref_base:,.1f}배** "
-                   f"(목표가 {fmt_price(an_low)} ~ {fmt_price(an_high)})")
+        delta = f"현재比 {(med_mult / cur_mult - 1) * 100:+.0f}%" if cur_mult else None
+        ac2.metric(f"애널리스트 목표 {method} (중앙값)", f"{med_mult:,.1f}배", delta, delta_color="off")
         st.caption(
-            f"애널리스트 평균 목표주가 **{fmt_price(an_mean)}**를 {ref_year} {method} 기준값으로 환산했어요.{rng}\n\n"
-            f"👉 **평균 {mean_mult:,.1f}배를 기준점**으로 보수/중립/낙관을 정해보세요. "
-            "(최저·최고는 가장 비관/낙관적인 애널리스트 **1명** 기준이라 폭이 넓을 수 있어요 · 야후 파이낸스 최신 컨센서스)")
+            f"애널리스트 목표주가 **중앙값 {fmt_price(an_median)}**를 {ref_year} {method}로 환산한 값이에요"
+            + (f"　(평균은 {an_mean / ref_base:,.1f}배)" if an_mean else "") + ".  "
+            "**중앙값**은 가장 비관/낙관적인 소수의 극단 의견을 자동으로 걸러줘서 기준점으로 더 적합해요.\n\n"
+            "👉 이 값을 기준으로 보수/중립/낙관을 정해보세요.　"
+            "※ 무료 데이터(야후)는 개별 리포트 **날짜를 제공하지 않아 '최근 1개월'만 골라내는 건 불가능**해요 "
+            "(최신 컨센서스 전체 기준).")
 
 st.divider()
 
