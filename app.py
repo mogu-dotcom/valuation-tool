@@ -551,12 +551,19 @@ else:
         g = ((e27v / e26v - 1) * 100) if (e26v and e27v and e26v > 0) else None
         if g and g > 0:
             cur_peg = (price / base) / g
-            st.info(
-                "📐 **PEG 참고** — PEG = PER ÷ 이익성장률 "
-                "(보통 **1이면 적정**, 1보다 낮을수록 성장 대비 저평가)\n\n"
-                f"· EPS 성장률(2026→2027): **{g:,.1f}%**　|　현재 PEG: **{cur_peg:.2f}**\n\n"
-                f"· 시나리오별 목표 PEG — 🔵 보수 **{m_low/g:.2f}**　/　"
-                f"⚪ 중립 **{m_mid/g:.2f}**　/　🔴 낙관 **{m_high/g:.2f}**")
+            verdict = ("성장 대비 저평가" if cur_peg < 0.9
+                       else "대체로 적정" if cur_peg <= 1.1 else "성장 대비 고평가")
+            # ① PEG 숫자를 먼저 크게
+            st.markdown("#### 📐 PEG &nbsp;<span style='font-size:.78rem;color:#8a8f99'>"
+                        "성장성까지 반영한 밸류에이션</span>", unsafe_allow_html=True)
+            pc1, pc2, pc3, pc4 = st.columns(4)
+            pc1.metric("현재 PEG", f"{cur_peg:.2f}", verdict, delta_color="off")
+            pc2.metric("🔵 보수 목표", f"{m_low/g:.2f}")
+            pc3.metric("⚪ 중립 목표", f"{m_mid/g:.2f}")
+            pc4.metric("🔴 낙관 목표", f"{m_high/g:.2f}")
+            # ② 부가 설명은 아래에
+            st.caption(f"**PEG = PER ÷ 연간 EPS 성장률**(여기선 {g:,.1f}%).  "
+                       f"숫자가 **1이면 적정**, 1보다 낮으면 성장 대비 **저평가**, 높으면 **고평가**로 봅니다.")
         else:
             st.caption("📐 PEG: 2027 EPS가 2026보다 커야(이익 성장 +) 함께 표시할 수 있어요.")
 
