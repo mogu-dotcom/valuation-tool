@@ -174,6 +174,13 @@ def fmt_shares(v):
     return f"{v:,.0f} 주"
 
 
+def fmt_num(v):
+    """천단위 콤마 표기. 원화는 정수, 달러는 소수 2자리."""
+    if not v:
+        return "-"
+    return f"{v:,.0f}" if is_krw() else f"{v:,.2f}"
+
+
 # ---------------------------------------------------------------------------
 # 스타일 (CSS)
 # ---------------------------------------------------------------------------
@@ -291,13 +298,10 @@ st.divider()
 # ---------------------------------------------------------------------------
 # 2. 평가 방식 · 기준 연도
 # ---------------------------------------------------------------------------
-st.markdown('<div class="sec"><span class="num">2</span>평가 방식 · 기준 연도</div>', unsafe_allow_html=True)
+st.markdown('<div class="sec"><span class="num">2</span>평가 방식</div>', unsafe_allow_html=True)
 
-m1, m2 = st.columns([3, 2], vertical_alignment="center")
-method = m1.segmented_control("평가 방식", ["PER", "PBR", "PSR"],
+method = st.segmented_control("평가 방식", ["PER", "PBR", "PSR"],
                               default="PER", key="method_sel") or "PER"
-year = m2.segmented_control("기준 연도", ["2026", "2027"],
-                            default="2026", key="year_sel") or "2026"
 
 METHOD_DESC = {
     "PER": ("EPS", "주당순이익", "회사가 버는 **이익** 기준 평가예요. 1주가 1년에 버는 순이익(EPS)을 사용해요."),
@@ -305,7 +309,7 @@ METHOD_DESC = {
     "PSR": ("SPS", "주당매출", "회사의 **매출** 기준 평가예요. 매출을 주식 수로 나눈 주당매출(SPS)을 사용해요."),
 }
 base_label, base_name, desc = METHOD_DESC[method]
-st.caption(f"**{method} · {year}년** 선택됨 — {desc}")
+st.caption(f"**{method}** 선택됨 — {desc}")
 
 st.divider()
 
@@ -313,25 +317,29 @@ st.divider()
 # 3. 값 확인 · 수정 (선택한 방식에 필요한 칸만)
 # ---------------------------------------------------------------------------
 st.markdown('<div class="sec"><span class="num">3</span>값 확인 · 수정</div>', unsafe_allow_html=True)
-st.caption("자동으로 채워진 값을 그대로 쓰거나, 빈칸·틀린 값은 직접 고치세요. (모든 칸 편집 가능)")
+st.caption("자동으로 채워진 값을 그대로 쓰거나, 빈칸·틀린 값은 직접 고치세요. 칸 아래에 콤마(,) 표기를 함께 보여드려요.")
 
 with st.container(border=True):
     st.number_input("💵 현재가", key="price", min_value=0.0, step=1.0, format="%.2f",
                     help="지금 시장에서 거래되는 1주 가격. 상승여력 계산의 기준이에요.")
+    if st.session_state["price"]:
+        st.caption(f"💵 현재가 = **{fmt_price(st.session_state['price'])}**")
 
     if method == "PER":
         a, b = st.columns(2)
         a.number_input("2026 EPS", key="eps_2026", step=0.01, format="%.2f",
                        help="주당순이익 = 순이익 ÷ 주식 수. '1주가 1년에 버는 순이익'.")
         b.number_input("2027 EPS", key="eps_2027", step=0.01, format="%.2f")
-        base = st.session_state[f"eps_{year}"]
+        st.caption(f"2026 EPS = **{fmt_num(st.session_state['eps_2026'])}**　·　"
+                   f"2027 EPS = **{fmt_num(st.session_state['eps_2027'])}**")
     elif method == "PBR":
         a, b = st.columns(2)
         a.number_input("2026 BPS", key="bps_2026", step=0.01, format="%.2f",
                        help="주당순자산 = 순자산(자본) ÷ 주식 수. '1주에 담긴 장부상 재산'.")
         b.number_input("2027 BPS", key="bps_2027", step=0.01, format="%.2f")
+        st.caption(f"2026 BPS = **{fmt_num(st.session_state['bps_2026'])}**　·　"
+                   f"2027 BPS = **{fmt_num(st.session_state['bps_2027'])}**")
         st.caption("※ 미래 BPS는 자동 제공이 거의 없어 '현재 BPS'로 채워둡니다. 필요시 수정하세요.")
-        base = st.session_state[f"bps_{year}"]
     else:  # PSR
         a, b = st.columns(2)
         a.number_input("2026 매출 (전체)", key="rev_2026", step=1.0, format="%.0f",
@@ -339,13 +347,21 @@ with st.container(border=True):
         b.number_input("2027 매출 (전체)", key="rev_2027", step=1.0, format="%.0f")
         st.number_input("발행주식수", key="shares", min_value=0.0, step=1.0, format="%.0f",
                         help="회사가 발행한 전체 주식 수.")
-        shares = st.session_state["shares"]
-        rev = st.session_state[f"rev_{year}"]
-        base = (rev / shares) if shares else 0.0
-        if rev and shares:
-            st.caption(f"→ {year} 주당매출(SPS) = {fmt_big(rev)} ÷ {fmt_shares(shares)} "
-                       f"= **{fmt_price(base)}**")
+        st.caption(f"2026 매출 = **{fmt_big(st.session_state['rev_2026'])}**　·　"
+                   f"2027 매출 = **{fmt_big(st.session_state['rev_2027'])}**　·　"
+                   f"발행주식수 = **{fmt_shares(st.session_state['shares'])}**")
 
+
+def _base_for(yr):
+    if method == "PER":
+        return st.session_state[f"eps_{yr}"]
+    if method == "PBR":
+        return st.session_state[f"bps_{yr}"]
+    sh = st.session_state["shares"]
+    return (st.session_state[f"rev_{yr}"] / sh) if sh else 0.0
+
+
+base_by_year = {"2026": _base_for("2026"), "2027": _base_for("2027")}
 price = st.session_state["price"]
 
 st.divider()
@@ -355,24 +371,22 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.markdown('<div class="sec"><span class="num">4</span>목표 배수 입력</div>', unsafe_allow_html=True)
 
-cur_mult = (price / base) if base else 0.0
+ref_base = base_by_year["2026"] or base_by_year["2027"]
+cur_mult = (price / ref_base) if ref_base else 0.0
 sug_mid = round(cur_mult, 1) if cur_mult else 10.0
 sug_low = round(sug_mid * 0.8, 1)
 sug_high = round(sug_mid * 1.2, 1)
 
 if cur_mult:
-    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 시나리오별로 정해보세요. "
-               f"참고 · 현재 {method} ≈ **{cur_mult:,.1f}배** (현재가 ÷ {year} {base_label})")
+    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 정하세요. 한 번 정하면 결과에서 연도(2026/2027)만 "
+               f"바꿔가며 비교할 수 있어요.　참고 · 현재 {method} ≈ **{cur_mult:,.1f}배**")
 else:
-    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 시나리오별로 정해보세요.")
+    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 정하세요. 한 번 정하면 결과에서 연도만 바꿔 비교할 수 있어요.")
 
 t1, t2, t3 = st.columns(3)
-m_low = t1.number_input("🔵 보수", min_value=0.0, value=sug_low, step=0.1,
-                        key=f"mult_low_{method}_{year}")
-m_mid = t2.number_input("⚪ 중립", min_value=0.0, value=sug_mid, step=0.1,
-                        key=f"mult_mid_{method}_{year}")
-m_high = t3.number_input("🔴 낙관", min_value=0.0, value=sug_high, step=0.1,
-                         key=f"mult_high_{method}_{year}")
+m_low = t1.number_input("🔵 보수", min_value=0.0, value=sug_low, step=0.1, key=f"mult_low_{method}")
+m_mid = t2.number_input("⚪ 중립", min_value=0.0, value=sug_mid, step=0.1, key=f"mult_mid_{method}")
+m_high = t3.number_input("🔴 낙관", min_value=0.0, value=sug_high, step=0.1, key=f"mult_high_{method}")
 
 st.divider()
 
@@ -380,6 +394,32 @@ st.divider()
 # 5. 결과
 # ---------------------------------------------------------------------------
 st.markdown('<div class="sec"><span class="num">5</span>결과</div>', unsafe_allow_html=True)
+
+
+def _mid_upside(yr):
+    b = base_by_year[yr]
+    if not b or not price:
+        return None
+    return (m_mid * b / price - 1) * 100
+
+
+def _chip(yr, up):
+    if up is None:
+        return f'<span class="badge">📅 {yr} 자료없음</span>'
+    col = UP_COLOR if up >= 0 else DOWN_COLOR
+    ar = "▲" if up >= 0 else "▼"
+    return f'<span class="badge">📅 {yr} 중립 <b style="color:{col}">{ar}{up:+.1f}%</b></span>'
+
+
+# 올해/내년 상승여력 한눈 비교 (중립 기준)
+st.markdown("**📊 올해 vs 내년 상승여력** (중립 시나리오 기준)", unsafe_allow_html=True)
+st.markdown(_chip("2026", _mid_upside("2026")) + "　" + _chip("2027", _mid_upside("2027")),
+            unsafe_allow_html=True)
+
+# 연도를 태그로 선택 → 아래에 자세히 표시
+year = st.segmented_control("기준 연도 (눌러서 자세히 보기)", ["2026", "2027"],
+                            default="2026", key="year_sel_result") or "2026"
+base = base_by_year[year]
 
 if not base or base <= 0:
     need = "매출/발행주식수" if method == "PSR" else base_label
@@ -402,7 +442,7 @@ else:
             else f"linear-gradient(135deg,{DOWN_COLOR} 0%, #5b9bf0 100%)")
     st.markdown(f"""
     <div class="headline" style="background:{grad}">
-      <div class="cap">중립 시나리오 ({mid_mult:.1f}배) 기준 목표주가</div>
+      <div class="cap">{year}년 기준 · 중립 시나리오 ({mid_mult:.1f}배) 목표주가</div>
       <div class="price">{fmt_price(mid_target)}</div>
       <div class="up">{arrow} 상승여력 {mid_up:+.1f}%</div>
       <div class="from">현재가 {fmt_price(price)} → 목표가 {fmt_price(mid_target)}</div>
