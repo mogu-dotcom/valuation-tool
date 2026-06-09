@@ -110,6 +110,10 @@ def apply_fetched(data: dict):
     st.session_state["rev_2027"] = float(data.get("rev_2027") or 0.0)
     st.session_state["shares"] = float(data.get("shares") or 0.0)
     st.session_state["loaded"] = True
+    # 입력 위젯이 새로 불러온 값을 다시 읽도록 위젯 상태 초기화
+    for wk in ("w_eps_2026", "w_eps_2027", "w_bps_2026", "w_bps_2027",
+               "w_rev_2026", "w_rev_2027", "w_shares"):
+        st.session_state.pop(wk, None)
 
 
 def do_fetch(code: str):
@@ -179,6 +183,16 @@ def fmt_num(v):
     if not v:
         return "-"
     return f"{v:,.0f}" if is_krw() else f"{v:,.2f}"
+
+
+def num_field(container, label, field, **kw):
+    """숫자 입력칸. 값을 영구 키(field)에 보관해, 평가 방식 전환으로 칸이
+    잠시 사라졌다 다시 나타나도 값이 유지되도록 한다. (위젯 키는 'w_'+field)"""
+    wk = "w_" + field
+    if wk not in st.session_state:
+        st.session_state[wk] = float(st.session_state.get(field, 0.0) or 0.0)
+    container.number_input(label, key=wk, **kw)
+    st.session_state[field] = st.session_state[wk]
 
 
 # ---------------------------------------------------------------------------
@@ -327,26 +341,26 @@ with st.container(border=True):
 
     if method == "PER":
         a, b = st.columns(2)
-        a.number_input("2026 EPS", key="eps_2026", step=0.01, format="%.2f",
-                       help="주당순이익 = 순이익 ÷ 주식 수. '1주가 1년에 버는 순이익'.")
-        b.number_input("2027 EPS", key="eps_2027", step=0.01, format="%.2f")
+        num_field(a, "2026 EPS", "eps_2026", step=0.01, format="%.2f",
+                  help="주당순이익 = 순이익 ÷ 주식 수. '1주가 1년에 버는 순이익'.")
+        num_field(b, "2027 EPS", "eps_2027", step=0.01, format="%.2f")
         st.caption(f"2026 EPS = **{fmt_num(st.session_state['eps_2026'])}**　·　"
                    f"2027 EPS = **{fmt_num(st.session_state['eps_2027'])}**")
     elif method == "PBR":
         a, b = st.columns(2)
-        a.number_input("2026 BPS", key="bps_2026", step=0.01, format="%.2f",
-                       help="주당순자산 = 순자산(자본) ÷ 주식 수. '1주에 담긴 장부상 재산'.")
-        b.number_input("2027 BPS", key="bps_2027", step=0.01, format="%.2f")
+        num_field(a, "2026 BPS", "bps_2026", step=0.01, format="%.2f",
+                  help="주당순자산 = 순자산(자본) ÷ 주식 수. '1주에 담긴 장부상 재산'.")
+        num_field(b, "2027 BPS", "bps_2027", step=0.01, format="%.2f")
         st.caption(f"2026 BPS = **{fmt_num(st.session_state['bps_2026'])}**　·　"
                    f"2027 BPS = **{fmt_num(st.session_state['bps_2027'])}**")
         st.caption("※ 미래 BPS는 자동 제공이 거의 없어 '현재 BPS'로 채워둡니다. 필요시 수정하세요.")
     else:  # PSR
         a, b = st.columns(2)
-        a.number_input("2026 매출 (전체)", key="rev_2026", step=1.0, format="%.0f",
-                       help="회사 전체 매출액. 발행주식수로 나눠 '주당매출'로 환산해요.")
-        b.number_input("2027 매출 (전체)", key="rev_2027", step=1.0, format="%.0f")
-        st.number_input("발행주식수", key="shares", min_value=0.0, step=1.0, format="%.0f",
-                        help="회사가 발행한 전체 주식 수.")
+        num_field(a, "2026 매출 (전체)", "rev_2026", step=1.0, format="%.0f",
+                  help="회사 전체 매출액. 발행주식수로 나눠 '주당매출'로 환산해요.")
+        num_field(b, "2027 매출 (전체)", "rev_2027", step=1.0, format="%.0f")
+        num_field(st, "발행주식수", "shares", min_value=0.0, step=1.0, format="%.0f",
+                  help="회사가 발행한 전체 주식 수.")
         st.caption(f"2026 매출 = **{fmt_big(st.session_state['rev_2026'])}**　·　"
                    f"2027 매출 = **{fmt_big(st.session_state['rev_2027'])}**　·　"
                    f"발행주식수 = **{fmt_shares(st.session_state['shares'])}**")
