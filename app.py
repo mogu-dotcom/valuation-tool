@@ -28,6 +28,9 @@ for f in FIELDS:
 st.session_state.setdefault("currency", "")
 st.session_state.setdefault("name", "")
 st.session_state.setdefault("loaded", False)
+for _k in ("an_mean", "an_low", "an_high"):
+    st.session_state.setdefault(_k, 0.0)
+st.session_state.setdefault("an_n", 0)
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +93,10 @@ def fetch_data(code: str):
                 "bps_cur": bps_cur,
                 "eps_2026": None, "eps_2027": None,
                 "rev_2026": None, "rev_2027": None,
+                "target_mean": info.get("targetMeanPrice"),
+                "target_low": info.get("targetLowPrice"),
+                "target_high": info.get("targetHighPrice"),
+                "n_analysts": info.get("numberOfAnalystOpinions"),
             }
             try:
                 ee = t.earnings_estimate
@@ -134,6 +141,11 @@ def apply_fetched(data: dict):
     sh = st.session_state["shares"]
     st.session_state["sps_2026"] = (st.session_state["rev_2026"] / sh) if sh else 0.0
     st.session_state["sps_2027"] = (st.session_state["rev_2027"] / sh) if sh else 0.0
+    # 애널리스트 목표주가 컨센서스
+    st.session_state["an_mean"] = float(data.get("target_mean") or 0.0)
+    st.session_state["an_low"] = float(data.get("target_low") or 0.0)
+    st.session_state["an_high"] = float(data.get("target_high") or 0.0)
+    st.session_state["an_n"] = int(data.get("n_analysts") or 0)
     st.session_state["loaded"] = True
     # 입력 위젯이 새로 불러온 값을 다시 읽도록 위젯 상태 초기화
     for wk in ("w_price", "w_eps_2026", "w_eps_2027", "w_bps_2026", "w_bps_2027",
@@ -445,6 +457,26 @@ t1, t2, t3 = st.columns(3)
 m_low = t1.number_input("🔵 보수", min_value=0.0, value=sug_low, step=0.1, key=f"mult_low_{method}")
 m_mid = t2.number_input("⚪ 중립", min_value=0.0, value=sug_mid, step=0.1, key=f"mult_mid_{method}")
 m_high = t3.number_input("🔴 낙관", min_value=0.0, value=sug_high, step=0.1, key=f"mult_high_{method}")
+
+# 애널리스트 컨센서스 기준 배수 (참고) — 목표주가 ÷ 기준값으로 역산
+an_mean = st.session_state.get("an_mean", 0.0)
+if an_mean and ref_base:
+    ref_year = "2026" if base_by_year["2026"] else "2027"
+    an_low = st.session_state.get("an_low", 0.0)
+    an_high = st.session_state.get("an_high", 0.0)
+    an_n = st.session_state.get("an_n", 0)
+    with st.container(border=True):
+        st.markdown("**📋 애널리스트 기준 배수 (참고)**"
+                    + (f"　·　분석가 {an_n}명" if an_n else ""))
+        ac1, ac2, ac3 = st.columns(3)
+        ac1.metric(f"평균 {method}", f"{an_mean / ref_base:,.1f}배")
+        ac2.metric("낮음", f"{an_low / ref_base:,.1f}배" if an_low else "—")
+        ac3.metric("높음", f"{an_high / ref_base:,.1f}배" if an_high else "—")
+        st.caption(
+            f"애널리스트 목표주가 평균 **{fmt_price(an_mean)}**"
+            + (f" (범위 {fmt_price(an_low)} ~ {fmt_price(an_high)})" if an_low and an_high else "")
+            + f"를 {ref_year} {method} 기준값으로 환산한 배수예요. 위 목표 배수를 정할 때 참고하세요.  "
+            "(야후 파이낸스 최신 애널리스트 컨센서스)")
 
 st.divider()
 
