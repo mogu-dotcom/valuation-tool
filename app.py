@@ -22,7 +22,7 @@ DOWN_COLOR = "#1f6fde"   # 파랑 (상승여력 -)
 BRAND = "#6c5ce7"        # 포인트 보라
 
 FIELDS = ["price", "eps_2026", "eps_2027", "bps_2026", "bps_2027",
-          "rev_2026", "rev_2027", "shares"]
+          "rev_2026", "rev_2027", "shares", "sps_2026", "sps_2027"]
 for f in FIELDS:
     st.session_state.setdefault(f, 0.0)
 st.session_state.setdefault("currency", "")
@@ -60,13 +60,34 @@ def fetch_data(code: str):
             if not price:
                 continue
 
+            # BPS 보강: ① bookValue ② 현재가÷PBR ③ 재무제표 자본총계÷발행주식수
+            bps_cur = info.get("bookValue")
+            if not bps_cur and info.get("priceToBook"):
+                try:
+                    bps_cur = float(price) / float(info["priceToBook"])
+                except Exception:
+                    bps_cur = None
+            if not bps_cur:
+                try:
+                    bs = t.balance_sheet
+                    sh0 = info.get("sharesOutstanding")
+                    for row in ("Common Stock Equity", "Stockholders Equity",
+                                "Total Equity Gross Minority Interest"):
+                        if bs is not None and row in bs.index:
+                            vals = bs.loc[row].dropna()
+                            if len(vals) and sh0:
+                                bps_cur = float(vals.iloc[0]) / float(sh0)
+                                break
+                except Exception:
+                    pass
+
             data = {
                 "resolved": tk,
                 "currency": info.get("currency", ""),
                 "name": info.get("shortName") or info.get("longName") or tk,
                 "price": float(price),
                 "shares": info.get("sharesOutstanding"),
-                "bps_cur": info.get("bookValue"),
+                "bps_cur": bps_cur,
                 "eps_2026": None, "eps_2027": None,
                 "rev_2026": None, "rev_2027": None,
             }
@@ -109,10 +130,14 @@ def apply_fetched(data: dict):
     st.session_state["rev_2026"] = float(data.get("rev_2026") or 0.0)
     st.session_state["rev_2027"] = float(data.get("rev_2027") or 0.0)
     st.session_state["shares"] = float(data.get("shares") or 0.0)
+    # 주당매출(SPS) = 전체 매출 ÷ 발행주식수
+    sh = st.session_state["shares"]
+    st.session_state["sps_2026"] = (st.session_state["rev_2026"] / sh) if sh else 0.0
+    st.session_state["sps_2027"] = (st.session_state["rev_2027"] / sh) if sh else 0.0
     st.session_state["loaded"] = True
     # 입력 위젯이 새로 불러온 값을 다시 읽도록 위젯 상태 초기화
-    for wk in ("w_eps_2026", "w_eps_2027", "w_bps_2026", "w_bps_2027",
-               "w_rev_2026", "w_rev_2027", "w_shares"):
+    for wk in ("w_price", "w_eps_2026", "w_eps_2027", "w_bps_2026", "w_bps_2027",
+               "w_sps_2026", "w_sps_2027"):
         st.session_state.pop(wk, None)
 
 
@@ -185,14 +210,44 @@ def fmt_num(v):
     return f"{v:,.0f}" if is_krw() else f"{v:,.2f}"
 
 
-def num_field(container, label, field, **kw):
-    """숫자 입력칸. 값을 영구 키(field)에 보관해, 평가 방식 전환으로 칸이
-    잠시 사라졌다 다시 나타나도 값이 유지되도록 한다. (위젯 키는 'w_'+field)"""
+def _fmt_input(v, dec):
+    return f"{v:,.{dec}f}"
+
+
+def _parse_num(s):
+    if s is None:
+        return None
+    s = str(s).replace(",", "").replace(" ", "").strip()
+    if s == "":
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _commit_field(field, wk, dec):
+    """입력 확정 시: 콤마 제거→숫자 파싱→영구 저장→콤마 포함 형식으로 다시 표시."""
+    p = _parse_num(st.session_state.get(wk, ""))
+    if p is None:  # 숫자가 아니면 마지막 정상값으로 복원
+        p = float(st.session_state.get(field, 0.0) or 0.0)
+    st.session_state[field] = p
+    st.session_state[wk] = _fmt_input(p, dec)
+
+
+def num_field(container, label, field, decimals=None, help=None):
+    """천단위 콤마가 칸 '안'에 표시되는 숫자 입력칸 (텍스트 입력 기반).
+    - 값을 영구 키(field)에 보관 → 평가 방식 전환으로 칸이 사라졌다 와도 유지
+    - decimals=None이면 원화 0자리 / 달러 2자리 자동"""
     wk = "w_" + field
+    dec = decimals if decimals is not None else (0 if is_krw() else 2)
     if wk not in st.session_state:
-        st.session_state[wk] = float(st.session_state.get(field, 0.0) or 0.0)
-    container.number_input(label, key=wk, **kw)
-    st.session_state[field] = st.session_state[wk]
+        st.session_state[wk] = _fmt_input(float(st.session_state.get(field, 0.0) or 0.0), dec)
+    container.text_input(label, key=wk, help=help,
+                         on_change=_commit_field, args=(field, wk, dec))
+    p = _parse_num(st.session_state[wk])
+    if p is not None:
+        st.session_state[field] = p
 
 
 # ---------------------------------------------------------------------------
@@ -334,36 +389,26 @@ st.markdown('<div class="sec"><span class="num">3</span>값 확인 · 수정</di
 st.caption("자동으로 채워진 값을 그대로 쓰거나, 빈칸·틀린 값은 직접 고치세요. 칸 아래에 콤마(,) 표기를 함께 보여드려요.")
 
 with st.container(border=True):
-    st.number_input("💵 현재가", key="price", min_value=0.0, step=1.0, format="%.2f",
-                    help="지금 시장에서 거래되는 1주 가격. 상승여력 계산의 기준이에요.")
-    if st.session_state["price"]:
-        st.caption(f"💵 현재가 = **{fmt_price(st.session_state['price'])}**")
+    num_field(st, "💵 현재가", "price",
+              help="지금 시장에서 거래되는 1주 가격. 상승여력 계산의 기준이에요.")
 
     if method == "PER":
         a, b = st.columns(2)
-        num_field(a, "2026 EPS", "eps_2026", step=0.01, format="%.2f",
+        num_field(a, "2026 EPS", "eps_2026",
                   help="주당순이익 = 순이익 ÷ 주식 수. '1주가 1년에 버는 순이익'.")
-        num_field(b, "2027 EPS", "eps_2027", step=0.01, format="%.2f")
-        st.caption(f"2026 EPS = **{fmt_num(st.session_state['eps_2026'])}**　·　"
-                   f"2027 EPS = **{fmt_num(st.session_state['eps_2027'])}**")
+        num_field(b, "2027 EPS", "eps_2027")
     elif method == "PBR":
         a, b = st.columns(2)
-        num_field(a, "2026 BPS", "bps_2026", step=0.01, format="%.2f",
+        num_field(a, "2026 BPS", "bps_2026",
                   help="주당순자산 = 순자산(자본) ÷ 주식 수. '1주에 담긴 장부상 재산'.")
-        num_field(b, "2027 BPS", "bps_2027", step=0.01, format="%.2f")
-        st.caption(f"2026 BPS = **{fmt_num(st.session_state['bps_2026'])}**　·　"
-                   f"2027 BPS = **{fmt_num(st.session_state['bps_2027'])}**")
-        st.caption("※ 미래 BPS는 자동 제공이 거의 없어 '현재 BPS'로 채워둡니다. 필요시 수정하세요.")
+        num_field(b, "2027 BPS", "bps_2027")
+        st.caption("※ BPS는 미래 추정이 거의 없어 '현재 BPS'(현재가÷PBR)를 채워둡니다. 비어 있으면 직접 입력하세요.")
     else:  # PSR
         a, b = st.columns(2)
-        num_field(a, "2026 매출 (전체)", "rev_2026", step=1.0, format="%.0f",
-                  help="회사 전체 매출액. 발행주식수로 나눠 '주당매출'로 환산해요.")
-        num_field(b, "2027 매출 (전체)", "rev_2027", step=1.0, format="%.0f")
-        num_field(st, "발행주식수", "shares", min_value=0.0, step=1.0, format="%.0f",
-                  help="회사가 발행한 전체 주식 수.")
-        st.caption(f"2026 매출 = **{fmt_big(st.session_state['rev_2026'])}**　·　"
-                   f"2027 매출 = **{fmt_big(st.session_state['rev_2027'])}**　·　"
-                   f"발행주식수 = **{fmt_shares(st.session_state['shares'])}**")
+        num_field(a, "2026 주당매출 (SPS)", "sps_2026",
+                  help="주당매출 = 전체 매출 ÷ 발행주식수. '1주가 1년에 올리는 매출'.")
+        num_field(b, "2027 주당매출 (SPS)", "sps_2027")
+        st.caption("※ 주당매출(SPS) = 전체 매출 ÷ 발행주식수. 자동 조회 값에서 계산해 채웁니다.")
 
 
 def _base_for(yr):
@@ -371,8 +416,7 @@ def _base_for(yr):
         return st.session_state[f"eps_{yr}"]
     if method == "PBR":
         return st.session_state[f"bps_{yr}"]
-    sh = st.session_state["shares"]
-    return (st.session_state[f"rev_{yr}"] / sh) if sh else 0.0
+    return st.session_state[f"sps_{yr}"]
 
 
 base_by_year = {"2026": _base_for("2026"), "2027": _base_for("2027")}
@@ -436,9 +480,8 @@ year = st.segmented_control("기준 연도 (눌러서 자세히 보기)", ["2026
 base = base_by_year[year]
 
 if not base or base <= 0:
-    need = "매출/발행주식수" if method == "PSR" else base_label
     st.warning(f"**{year} {base_name}({base_label})** 값이 없어요. "
-               f"위 3번에서 '{need}' 칸에 값을 입력하면 결과가 나타나요.")
+               f"위 3번에서 '{base_name}' 칸에 값을 입력하면 결과가 나타나요.")
 elif not price or price <= 0:
     st.warning("**현재가**가 없어 상승여력을 계산할 수 없어요. 위에서 현재가를 입력하세요.")
 else:
