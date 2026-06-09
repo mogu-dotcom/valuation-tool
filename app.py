@@ -6,9 +6,11 @@
 주식 교육용 — 누구나 쉽고 예쁘게 쓰는 것이 최우선
 """
 
+import re
 import streamlit as st
 import pandas as pd
 import altair as alt
+import requests
 import yfinance as yf
 
 # ---------------------------------------------------------------------------
@@ -31,6 +33,7 @@ st.session_state.setdefault("loaded", False)
 for _k in ("an_mean", "an_median", "an_low", "an_high"):
     st.session_state.setdefault(_k, 0.0)
 st.session_state.setdefault("an_n", 0)
+st.session_state.setdefault("naver_code", "")
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +128,47 @@ def fetch_data(code: str):
     return None
 
 
+@st.cache_data(ttl=1800, show_spinner="최근 애널리스트 리포트 불러오는 중...")
+def recent_targets(code6: str, want: int = 3, scan: int = 6):
+    """네이버 금융 종목분석 리포트에서 최근 증권사 목표가를 최대 want개 수집.
+    한국 6자리 코드만. 차단/실패 시 빈 리스트 반환(→ 야후 중앙값으로 폴백)."""
+    if not code6:
+        return []
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    try:
+        url = ("https://finance.naver.com/research/company_list.naver"
+               f"?searchType=itemCode&itemCode={code6}")
+        r = requests.get(url, headers=headers, timeout=4)
+        r.encoding = "euc-kr"
+        rows = [x for x in re.findall(r"<tr[^>]*>(.*?)</tr>", r.text, re.S) if "company_read" in x]
+    except Exception:
+        return []
+    out = []
+    for row in rows[:scan]:
+        mnid = re.search(r"nid=(\d+)", row)
+        if not mnid:
+            continue
+        cells = [re.sub(r"<[^>]+>", "", c).replace("&nbsp;", " ").strip()
+                 for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
+        cells = [c for c in cells if c]
+        date = next((c for c in cells if re.match(r"\d{2}\.\d{2}\.\d{2}$", c)), "")
+        broker = next((c for c in cells if "증권" in c or "투자" in c), "?")
+        try:
+            d = requests.get("https://finance.naver.com/research/company_read.naver"
+                             f"?nid={mnid.group(1)}", headers=headers, timeout=4)
+            d.encoding = "euc-kr"
+            m = re.search(r"목표가[\s\S]{0,150}?([\d]{1,3}(?:,[0-9]{3})+)", d.text)
+        except Exception:
+            continue
+        if m:
+            tgt = int(m.group(1).replace(",", ""))
+            if tgt > 0:
+                out.append({"date": date, "broker": broker, "target": tgt})
+        if len(out) >= want:
+            break
+    return out
+
+
 def apply_fetched(data: dict):
     """조회 결과를 입력 칸(세션)에 채워 넣는다. None은 0으로."""
     st.session_state["currency"] = data.get("currency", "")
@@ -148,6 +192,8 @@ def apply_fetched(data: dict):
     st.session_state["an_low"] = float(data.get("target_low") or 0.0)
     st.session_state["an_high"] = float(data.get("target_high") or 0.0)
     st.session_state["an_n"] = int(data.get("n_analysts") or 0)
+    _rc = re.match(r"(\d{6})\.K[SQ]$", data.get("resolved", ""))
+    st.session_state["naver_code"] = _rc.group(1) if _rc else ""
     st.session_state["loaded"] = True
     # 입력 위젯이 새로 불러온 값을 다시 읽도록 위젯 상태 초기화
     for wk in ("w_price", "w_eps_2026", "w_eps_2027", "w_bps_2026", "w_bps_2027",
@@ -460,29 +506,43 @@ m_low = t1.number_input("🔵 보수", min_value=0.0, value=sug_low, step=0.1, k
 m_mid = t2.number_input("⚪ 중립", min_value=0.0, value=sug_mid, step=0.1, key=f"mult_mid_{method}")
 m_high = t3.number_input("🔴 낙관", min_value=0.0, value=sug_high, step=0.1, key=f"mult_high_{method}")
 
-# 애널리스트 컨센서스 기준 배수 (참고) — 목표주가 ÷ 기준값으로 역산
+# 기준 배수 (참고): ① 네이버 최근 리포트 목표가 → 실패 시 ② 야후 중앙값
 an_mean = st.session_state.get("an_mean", 0.0)
-if an_mean and ref_base:
+naver_code = st.session_state.get("naver_code", "")
+recent = recent_targets(naver_code) if naver_code else []
+if (recent or an_mean) and ref_base:
     ref_year = "2026" if base_by_year["2026"] else "2027"
-    an_low = st.session_state.get("an_low", 0.0)
-    an_high = st.session_state.get("an_high", 0.0)
-    an_n = st.session_state.get("an_n", 0)
-    an_median = st.session_state.get("an_median", 0.0) or an_mean
-    med_mult = an_median / ref_base
     with st.container(border=True):
-        st.markdown("**📋 애널리스트 기준 배수 (참고)**"
-                    + (f"　·　분석가 {an_n}명" if an_n else ""))
-        ac1, ac2 = st.columns(2)
-        ac1.metric(f"현재 {method}", f"{cur_mult:,.1f}배")
-        delta = f"현재比 {(med_mult / cur_mult - 1) * 100:+.0f}%" if cur_mult else None
-        ac2.metric(f"애널리스트 목표 {method} (중앙값)", f"{med_mult:,.1f}배", delta, delta_color="off")
-        st.caption(
-            f"애널리스트 목표주가 **중앙값 {fmt_price(an_median)}**를 {ref_year} {method}로 환산한 값이에요"
-            + (f"　(평균은 {an_mean / ref_base:,.1f}배)" if an_mean else "") + ".  "
-            "**중앙값**은 가장 비관/낙관적인 소수의 극단 의견을 자동으로 걸러줘서 기준점으로 더 적합해요.\n\n"
-            "👉 이 값을 기준으로 보수/중립/낙관을 정해보세요.　"
-            "※ 무료 데이터(야후)는 개별 리포트 **날짜를 제공하지 않아 '최근 1개월'만 골라내는 건 불가능**해요 "
-            "(최신 컨센서스 전체 기준).")
+        if recent:
+            avg_t = sum(x["target"] for x in recent) / len(recent)
+            avg_mult = avg_t / ref_base
+            st.markdown(f"**📋 최근 애널리스트 리포트 기준 배수**　·　최근 {len(recent)}개")
+            ac1, ac2 = st.columns(2)
+            ac1.metric(f"현재 {method}", f"{cur_mult:,.1f}배")
+            delta = f"현재比 {(avg_mult / cur_mult - 1) * 100:+.0f}%" if cur_mult else None
+            ac2.metric(f"최근 리포트 평균 {method}", f"{avg_mult:,.1f}배", delta, delta_color="off")
+            lines = "　".join(f"· {x['date']} {x['broker']} {fmt_price(x['target'])}" for x in recent)
+            st.caption(
+                f"{lines}\n\n"
+                f"최근 {len(recent)}개 평균 목표주가 **{fmt_price(avg_t)}** → {ref_year} {method} **{avg_mult:,.1f}배**.  "
+                "👉 이 값을 기준으로 보수/중립/낙관을 정해보세요. (네이버 금융 종목분석 리포트)")
+        else:
+            an_low = st.session_state.get("an_low", 0.0)
+            an_high = st.session_state.get("an_high", 0.0)
+            an_n = st.session_state.get("an_n", 0)
+            an_median = st.session_state.get("an_median", 0.0) or an_mean
+            med_mult = an_median / ref_base
+            st.markdown("**📋 애널리스트 기준 배수 (참고)**"
+                        + (f"　·　분석가 {an_n}명" if an_n else ""))
+            ac1, ac2 = st.columns(2)
+            ac1.metric(f"현재 {method}", f"{cur_mult:,.1f}배")
+            delta = f"현재比 {(med_mult / cur_mult - 1) * 100:+.0f}%" if cur_mult else None
+            ac2.metric(f"애널리스트 목표 {method} (중앙값)", f"{med_mult:,.1f}배", delta, delta_color="off")
+            st.caption(
+                f"애널리스트 목표주가 **중앙값 {fmt_price(an_median)}**를 {ref_year} {method}로 환산"
+                + (f"(평균 {an_mean / ref_base:,.1f}배)" if an_mean else "") + ". "
+                "중앙값은 극단적 소수 의견을 자동으로 걸러줘요.  "
+                "※ 한국 종목은 최근 리포트(네이버)를 우선 쓰지만, 못 불러오면 이 컨센서스로 대체돼요.")
 
 st.divider()
 
