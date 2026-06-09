@@ -245,30 +245,34 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 st.markdown('<div class="sec"><span class="num">1</span>종목 선택</div>', unsafe_allow_html=True)
 
-POPULAR_KR = [("삼성전자", "005930"), ("SK하이닉스", "000660"),
-              ("NAVER", "035420"), ("카카오", "035720")]
-POPULAR_US = [("Apple", "AAPL"), ("Tesla", "TSLA"),
-              ("NVIDIA", "NVDA"), ("Microsoft", "MSFT")]
+POPULAR = [("삼성전자", "005930"), ("SK하이닉스", "000660"), ("NAVER", "035420"),
+           ("카카오", "035720"), ("Apple", "AAPL"), ("Tesla", "TSLA"),
+           ("NVIDIA", "NVDA"), ("Microsoft", "MSFT")]
+POP_MAP = {nm: cd for nm, cd in POPULAR}
 
-st.caption("🇰🇷 인기 한국 종목")
-kr_cols = st.columns(4)
-for i, (nm, cd) in enumerate(POPULAR_KR):
-    if kr_cols[i].button(nm, key=f"kr_{cd}", width='stretch'):
-        st.session_state["code_input"] = cd
-        do_fetch(cd)
 
-st.caption("🇺🇸 인기 미국 종목")
-us_cols = st.columns(4)
-for i, (nm, cd) in enumerate(POPULAR_US):
-    if us_cols[i].button(nm, key=f"us_{cd}", width='stretch'):
-        st.session_state["code_input"] = cd
-        do_fetch(cd)
+def _on_pick():
+    nm = st.session_state.get("pop_pick")
+    if nm:
+        st.session_state["code_input"] = POP_MAP[nm]
+        st.session_state["_pending_fetch"] = POP_MAP[nm]
 
+
+# 메인: 검색창 (맨 위)
 c_in, c_btn = st.columns([3, 1], vertical_alignment="bottom")
-code = c_in.text_input("직접 입력 (미국: AAPL · 한국: 005930)", key="code_input",
-                       placeholder="종목코드를 입력하세요")
-if c_btn.button("🔍 조회", width='stretch', type="primary"):
+code = c_in.text_input("종목 검색", key="code_input",
+                       placeholder="미국: AAPL   ·   한국: 005930")
+search_clicked = c_btn.button("🔍 조회", width='stretch', type="primary")
+
+# 인기 종목 태그 (검색창 아래, 간단한 pill)
+st.pills("인기 종목 (눌러서 바로 조회)", list(POP_MAP.keys()),
+         selection_mode="single", key="pop_pick", on_change=_on_pick)
+
+# 조회 실행
+if search_clicked:
     do_fetch(code)
+elif st.session_state.pop("_pending_fetch", None):
+    do_fetch(st.session_state["code_input"])
 
 msg = st.session_state.pop("_fetch_msg", None)
 if msg:
