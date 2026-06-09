@@ -545,5 +545,20 @@ else:
     st.caption(f"계산식 · 목표가 = 목표{method} × {year} {base_label}({fmt_price(base)})  ·  "
                f"상승여력 = (목표가 ÷ 현재가 − 1) × 100  ·  🔴 빨강=상승 🔵 파랑=하락")
 
+    # PER일 때 PEG도 함께 표기 (PEG = PER ÷ 이익성장률)
+    if method == "PER":
+        e26v, e27v = st.session_state["eps_2026"], st.session_state["eps_2027"]
+        g = ((e27v / e26v - 1) * 100) if (e26v and e27v and e26v > 0) else None
+        if g and g > 0:
+            cur_peg = (price / base) / g
+            st.info(
+                "📐 **PEG 참고** — PEG = PER ÷ 이익성장률 "
+                "(보통 **1이면 적정**, 1보다 낮을수록 성장 대비 저평가)\n\n"
+                f"· EPS 성장률(2026→2027): **{g:,.1f}%**　|　현재 PEG: **{cur_peg:.2f}**\n\n"
+                f"· 시나리오별 목표 PEG — 🔵 보수 **{m_low/g:.2f}**　/　"
+                f"⚪ 중립 **{m_mid/g:.2f}**　/　🔴 낙관 **{m_high/g:.2f}**")
+        else:
+            st.caption("📐 PEG: 2027 EPS가 2026보다 커야(이익 성장 +) 함께 표시할 수 있어요.")
+
 st.markdown("<br>", unsafe_allow_html=True)
 st.caption("⚠️ 교육용 도구입니다. 자동 추정치는 부정확할 수 있으니 투자 판단의 유일한 근거로 쓰지 마세요.")
