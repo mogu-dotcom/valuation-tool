@@ -387,8 +387,10 @@ html, body, [class*="css"], .stApp, button, input, textarea, select {
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 .stApp { color:#2d3436; }
-#MainMenu, footer, header [data-testid="stToolbar"] {visibility: hidden;}
-.block-container {padding-top: 1.4rem; padding-bottom: 3rem; max-width: 760px;}
+#MainMenu, footer {visibility: hidden;}
+/* 상단 흰색 헤더 바 + 데코 라인 완전히 제거 (공간까지) */
+header[data-testid="stHeader"], [data-testid="stDecoration"] {display: none !important; height: 0 !important;}
+.block-container {padding-top: 1.1rem; padding-bottom: 3rem; max-width: 760px;}
 
 /* 설명·주석 — 차분하고 읽기 쉽게 (전역 통일) */
 [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p,
