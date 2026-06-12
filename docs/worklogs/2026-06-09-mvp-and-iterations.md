@@ -346,3 +346,17 @@ curl -s -o /dev/null -w "%{http_code}\n" https://valuation-tool-production-248e.
 ### 현재 기능 전체 요약 (스냅샷)
 PER/PBR/PSR + (PER에) PEG(성장률 수정가능) · 한국[whynotsellreport]/미국[야후 upgrades_downgrades] 최근 애널 목표가(2개월·극단값제외)
 · 목표배수 디폴트=애널 평균(2027 보수적) · 콤마 입력 · 보수/중립/낙관 시나리오 · 2026/2027 비교 · 한국식 색상 · 깔끔 디자인.
+
+---
+
+## 14. 업데이트 — 헤더 리디자인 · 상단 바 제거 (2026-06-12, CSS만)
+
+- `7b5d41a` **헤더 리디자인(모던 핀테크)**: 기존 보라 박스 → **밝은 화이트 카드**. 구성요소:
+  `.hero`(flex), `.hero-mark`(그라데이션 둥근 아이콘 📈), `.hero-kicker`("STOCK VALUATION" 영문 키커),
+  `h1 .grad`(그라데이션 텍스트 클립), `.hero-tags span`(태그칩 PER/PBR/PSR/PEG/🇰🇷/🇺🇸). 색은 아이콘·텍스트에만 절제.
+- `b8a602e` **상단 흰색 헤더 바 제거**: Streamlit 기본 `header[data-testid="stHeader"]`와 `[data-testid="stDecoration"]`를
+  **`display:none`(공간까지)**. 기존엔 `visibility:hidden`이라 빈 흰 띠가 남았던 게 원인. block-container `padding-top` 1.1rem로 축소.
+- 디자인 방향 일관: **심플·정돈·요즘(모던) 톤**. 색 포인트는 보라 그라데이션 한 곳에 절제해서 사용.
+
+### 배포 메모
+- `railway up`이 가끔 **Railway API 일시 네트워크 오류(`reqwest error ... backboard.railway.com`)**로 실패함. 그땐 **그냥 재시도**하면 됨(코드/푸시는 영향 없음). 배포 후 항상 `curl .../healthz` 200 확인.
