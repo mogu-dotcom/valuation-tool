@@ -128,48 +128,48 @@ def fetch_data(code: str):
     return None
 
 
-@st.cache_data(ttl=1800, show_spinner="최근 애널리스트 리포트 불러오는 중...")
-def recent_targets(code6: str, want: int = 3, scan: int = 18, max_fetch: int = 8):
-    """네이버 금융 종목분석 리포트에서 서로 다른 증권사의 최근 목표가를 최대 want개 수집.
-    같은 증권사(하우스)는 가장 최근 1건만 사용(중복 제거). 한국 6자리 코드만. 실패 시 []."""
+_WNS = "https://whynotsellreport.com"
+_WNS_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _wns_stock_id(code6: str):
+    """whynotsellreport stocklist에서 6자리 코드 → 내부 종목 id 매핑."""
     if not code6:
-        return []
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        return None
     try:
-        url = ("https://finance.naver.com/research/company_list.naver"
-               f"?searchType=itemCode&itemCode={code6}")
-        r = requests.get(url, headers=headers, timeout=4)
-        r.encoding = "euc-kr"
-        rows = [x for x in re.findall(r"<tr[^>]*>(.*?)</tr>", r.text, re.S) if "company_read" in x]
+        r = requests.get(f"{_WNS}/api/stocklist", headers=_WNS_HEADERS, timeout=8)
+        for s in r.json():
+            if s.get("code") == code6:
+                return s.get("id")
+    except Exception:
+        return None
+    return None
+
+
+@st.cache_data(ttl=1800, show_spinner="최근 애널리스트 리포트 불러오는 중...")
+def recent_targets(code6: str, want: int = 5):
+    """whynotsellreport.com API에서 최근 애널리스트 리포트 목표가를 수집.
+    같은 애널리스트(보통 증권사당 1명 담당)는 가장 최근 1건만. 한국 종목만. 실패 시 []."""
+    sid = _wns_stock_id(code6)
+    if not sid:
+        return []
+    try:
+        r = requests.get(f"{_WNS}/api/reports/sid/{sid}", headers=_WNS_HEADERS, timeout=10)
+        data = r.json()
     except Exception:
         return []
-    out, seen, fetches = [], set(), 0
-    for row in rows[:scan]:
-        mnid = re.search(r"nid=(\d+)", row)
-        if not mnid:
+    if not isinstance(data, list):
+        return []
+    rows = [x for x in data if (x.get("price") or 0) > 0 and x.get("date")]
+    rows.sort(key=lambda x: x.get("date", ""), reverse=True)  # 최신순
+    out, seen = [], set()
+    for x in rows:
+        analyst = (x.get("analyst_name") or "").strip()
+        if not analyst or analyst.lower() == "tbd" or analyst in seen:
             continue
-        cells = [re.sub(r"<[^>]+>", "", c).replace("&nbsp;", " ").strip()
-                 for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
-        cells = [c for c in cells if c]
-        date = next((c for c in cells if re.match(r"\d{2}\.\d{2}\.\d{2}$", c)), "")
-        broker = next((c for c in cells if "증권" in c or "투자" in c), "?")
-        if broker in seen:          # 같은 증권사는 더 최근 건이 이미 있으니 건너뜀
-            continue
-        if fetches >= max_fetch:
-            break
-        seen.add(broker)
-        fetches += 1
-        try:
-            d = requests.get("https://finance.naver.com/research/company_read.naver"
-                             f"?nid={mnid.group(1)}", headers=headers, timeout=4)
-            d.encoding = "euc-kr"
-            m = re.search(r"목표가[\s\S]{0,150}?([\d]{1,3}(?:,[0-9]{3})+)", d.text)
-        except Exception:
-            continue
-        if m:
-            tgt = int(m.group(1).replace(",", ""))
-            if tgt > 0:
-                out.append({"date": date, "broker": broker, "target": tgt})
+        seen.add(analyst)
+        out.append({"date": x["date"][:10], "broker": analyst, "target": int(x["price"])})
         if len(out) >= want:
             break
     return out
@@ -533,14 +533,15 @@ if (recent or an_mean) and ref_base:
     with st.container(border=True):
         if recent:
             avg_t = sum(x["target"] for x in recent) / len(recent)
-            st.markdown(f"**📋 최근 애널리스트 리포트 기준 배수**　·　최근 {len(recent)}개")
+            st.markdown(f"**📋 최근 애널리스트 리포트 기준 배수**　·　최근 {len(recent)}명")
             _bench_table(avg_t, f"리포트평균 {method}")
             lines = "　".join(f"· {x['date']} {x['broker']} {fmt_price(x['target'])}" for x in recent)
             st.caption(
                 f"{lines}\n\n"
-                f"평균 목표주가 **{fmt_price(avg_t)}**.  같은 목표가라도 **어느 해 EPS로 나누냐**에 따라 배수가 달라요. "
-                "애널리스트는 보통 **다음 해(2027) 실적** 기준으로 목표가를 잡으니, **2027 기준 배수가 더 현실적**이에요. "
-                "5번에서 계산할 연도와 **같은 기준의 배수**를 쓰세요. (네이버 금융 종목분석 리포트)")
+                f"평균 목표주가 **{fmt_price(avg_t)}** (서로 다른 애널리스트 {len(recent)}명, 같은 사람은 최근 1건만).  "
+                "같은 목표가라도 **어느 해 EPS로 나누냐**에 따라 배수가 달라요 — 애널리스트는 보통 **다음 해(2027) 실적** "
+                "기준으로 목표가를 잡으니 **2027 기준 배수가 더 현실적**이에요. 5번에서 계산할 연도와 **같은 기준의 배수**를 쓰세요. "
+                "(출처: whynotsellreport.com)")
         else:
             an_n = st.session_state.get("an_n", 0)
             an_median = st.session_state.get("an_median", 0.0) or an_mean
@@ -550,7 +551,7 @@ if (recent or an_mean) and ref_base:
             st.caption(
                 f"목표주가 **중앙값 {fmt_price(an_median)}** 기준. 같은 목표가라도 어느 해 EPS로 나누냐에 따라 배수가 달라요"
                 "(애널리스트는 보통 다음 해 실적 기준 → **2027 기준이 현실적**). "
-                "한국 종목은 최근 리포트(네이버)를 우선 쓰고, 못 불러오면 이 컨센서스로 대체돼요.")
+                "한국 종목은 최근 리포트(whynotsellreport.com)를 우선 쓰고, 못 불러오면 이 컨센서스로 대체돼요.")
 
 st.divider()
 
