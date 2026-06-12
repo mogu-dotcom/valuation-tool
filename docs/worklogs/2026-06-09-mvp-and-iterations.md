@@ -261,3 +261,54 @@ curl -s -o /dev/null -w "%{http_code}\n" https://valuation-tool-production-248e.
 - 운영(Railway)에서 네이버 차단 시 대안: 프록시 경유, 또는 한국 종목 한정 다른 소스.
 - 네이버 목록의 최근 리포트가 **한 증권사로 쏠릴 수 있음**(예: 삼성전자 최근 3개가 전부 미래에셋). 증권사별 dedupe 옵션 고려 가능(현재는 최근순 그대로, 목록에 증권사·날짜 노출해 투명).
 - 미국 종목은 여전히 야후 중앙값만(날짜별 목표가 무료 소스 없음).
+
+> ⚠️ **위 11장의 "네이버 스크래핑"은 12장에서 whynotsellreport.com API로 대체됨.** 네이버 코드는 더 이상 사용 안 함.
+
+---
+
+## 12. 업데이트 — 소스 교체(whynotsellreport) · PEG 수정가능 · 목표배수 디폴트 (2026-06-12)
+
+### 커밋 (599db82 워크로그 이후)
+- `da0d918` (네이버) 같은 증권사 중복 제거 — **곧 폐기됨**(아래 b78dd39로 대체)
+- `b78dd39` 최근 리포트 소스 **네이버 스크래핑 → whynotsellreport.com API**로 교체
+- `3501a38` **PEG 성장률 수정 가능**하게(기본=2026→2027 컨센서스 자동)
+- `0dbe9d2` **목표배수 기본값 = 애널리스트 평균 목표 PER**(중립=평균, 보수/낙관 ±20%)
+- `09f4180` **방어 강화** — recent_targets/평균계산 try-except로 감싸 운영 크래시 수정
+- `c309683` 목표배수 기준연도 **2026 → 2027(보수적)**
+
+### ★ whynotsellreport.com API (현재 최근 리포트 소스 — 재조사 불필요)
+프론트는 Next.js(클라이언트 렌더, 데이터 HTML에 없음). **데이터는 `/api/*` JSON 엔드포인트**. robots.txt `Allow: /`.
+백엔드 흔적: `stocks.allreview.kr`. 발견·사용 엔드포인트:
+- **`/api/stocklist`** (335KB) → `[{id, code, name, remark(KOSPI/KOSDAQ), ...}]`. **code(6자리) → id 매핑**에 사용. (삼성전자 005930 → id **911**)
+- **`/api/reports/sid/{id}`** (★메인, 종목별 전체 리포트, 삼성 ~2.4MB/5331건) →
+  `[{id, stock_code_id, company_id, analyst_id, price(목표가), date("YYYY-MM-DD ..."), judge, title, description, analyst_name, company_name, ...}]`
+  - **price=목표가, date=발표일, analyst_name=애널리스트**. ⚠️ **증권사(브로커리지) 이름 필드는 없음**(company_id/company_name은 *피커버 종목*을 가리킴, 증권사 아님). → **애널리스트 이름으로 하우스 구분**(보통 종목당 증권사별 1명이라 사실상 동일).
+  - price=0/`"tbd"` analyst = 예고/플레이스홀더 → 필터.
+- 기타(미사용): `/api/reports/dates/range/{id}`(날짜 목록), `/api/reports/from/`, `/api/reports/stockchart/sid/`, `/api/stock_info/sid/`, `/api/target_price_change`(전종목 최신 목표가 변경 피드).
+- **장점 vs 네이버**: 단일 JSON 호출, 6월 리포트가 훨씬 완전(네이버는 미래에셋만 보였음), HTML 파싱 불필요.
+
+### 구현 (app.py)
+- `import re, requests` (모듈 top). `_WNS="https://whynotsellreport.com"`, `_WNS_HEADERS`.
+- `_wns_stock_id(code6)` `@cache_data(ttl=86400)`: stocklist에서 code→id.
+- `recent_targets(code6, want=5)` `@cache_data(ttl=1800)`: `/api/reports/sid/{id}` → price>0 필터 → 날짜 내림차순 → **애널리스트 중복 제거** → 최대 5명 `{date, broker(=애널), target}`.
+  - **★ 전체 본문을 try/except로 감쌈 → 어떤 외부데이터/네트워크 오류에도 [] 반환(절대 예외 안 던짐).** `_to_num()`으로 가격 안전 변환(문자열 콤마 등).
+- 세션 키 `naver_code`(이름만 네이버 잔재, 실제는 whynotsellreport용 6자리코드). apply_fetched가 resolved `\d{6}\.K[SQ]`→6자리로 세팅.
+
+### ★ 운영 크래시 버그 & 방어 패턴 (09f4180) — 교훈
+- **증상**: 로컬은 정상인데 **Railway에서 삼성전자 조회 시 빨간 에러**(조회 안 됨).
+- **원인**: whynotsellreport 데이터 일부 항목의 `price`가 예상과 다른 형식이라 `(x.get("price") or 0) > 0` 에서 **str>int TypeError**. 이 처리부가 try/except 밖이라 전파됨. 로컬은 캐시된 깨끗한 5건만 봐서 재현 안 됨.
+- **방어 원칙(앞으로도)**: 외부 데이터를 **처리하는 부분까지 전부** try/except로 감싸고, 숫자는 `_to_num` 같은 안전 변환을 쓸 것. 호출부도 `try: recent=recent_targets(...) except: recent=[]`로 이중 방어.
+
+### 목표 배수 디폴트 (0dbe9d2 → c309683)
+- 섹션 4: 기존 현재가 기반 8/10/12 → **애널리스트 평균 목표가 ÷ EPS = 평균 목표 PER**을 **중립 기본값**, 보수/낙관 ±20%.
+- **기준연도는 2027(보수적)**: `ref_base = base_by_year["2027"] or ["2026"]`. 2027 EPS가 더 커서 같은 목표가라도 배수가 낮게(=보수적) 잡힘. (삼성 2026기준 10.9배 → 2027기준 **8.6배**)
+- **새 종목시 자동 리셋**: 멀티플 number_input 키에 기본값 포함 `key=f"mult_mid_{method}_{sug_mid}"` → 종목(=애널평균) 바뀌면 새 디폴트로 리셋, 사용자가 수정하면 유지. (PEG 성장률 입력도 같은 패턴 `key=f"peg_g_{round(g_auto,2)}"`.)
+- 애널 데이터 없으면(미국 등) 야후 중앙값, 그것도 없으면 현재 배수 → 10.0 순으로 폴백.
+
+### PEG 성장률 수정 가능 (3501a38)
+- 섹션 5 PER 결과의 PEG: 성장률을 **number_input으로 수정 가능**(기본=2026→2027 컨센서스 g_auto). 출처/한계(경기민감주 단년 성장률은 PEG를 과도하게 낮게 보이게 함) 안내. g≤0이면 PEG 미표시.
+- 검증됨: g=26.9%는 버그 아님(yfinance `+1y growth`=0.2694와 동일).
+
+### 다음 세션 메모
+- `naver_code` 세션키는 사실 whynotsellreport용(리네이밍 안 함). 헷갈리지 말 것.
+- whynotsellreport도 소규모 사이트라 다운/차단 가능 → 그때는 야후 중앙값으로 자동 폴백(앱 안 죽음). 운영에서 어느 쪽인지는 패널 제목으로 구분(11장 (H) 참고, "최근 애널리스트 리포트"=whynotsell 성공 / "애널리스트 기준 배수(참고)"=폴백).
