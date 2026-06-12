@@ -676,7 +676,7 @@ st.markdown(_chip("2026", _mid_upside("2026")) + "　" + _chip("2027", _mid_upsi
 
 # 연도를 태그로 선택 → 아래에 자세히 표시
 year = st.segmented_control("기준 연도 (눌러서 자세히 보기)", ["2026", "2027"],
-                            default="2026", key="year_sel_result") or "2026"
+                            default="2027", key="year_sel_result") or "2027"
 base = base_by_year[year]
 
 if not base or base <= 0:
