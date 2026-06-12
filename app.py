@@ -506,8 +506,9 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.markdown('<div class="sec"><span class="num">4</span>목표 배수 입력</div>', unsafe_allow_html=True)
 
-ref_base = base_by_year["2026"] or base_by_year["2027"]
-ref_year = "2026" if base_by_year["2026"] else "2027"
+# 기준 연도는 보수적으로 2027(다음 해, EPS가 더 큼 → 배수가 낮게 잡힘) 우선
+ref_base = base_by_year["2027"] or base_by_year["2026"]
+ref_year = "2027" if base_by_year["2027"] else "2026"
 cur_mult = (price / ref_base) if ref_base else 0.0
 
 # --- 애널리스트 기준 목표가를 먼저 계산 (디폴트 배수 + 아래 패널에서 공용) ---
@@ -536,7 +537,7 @@ sug_low = round(sug_mid * 0.8, 1)
 sug_high = round(sug_mid * 1.2, 1)
 
 if bench_mult:
-    st.caption(f"**중립** 기본값을 **애널리스트 평균 목표 {method} {bench_mult:,.1f}배**({ref_year} EPS 기준)로 채웠어요. "
+    st.caption(f"**중립** 기본값을 **애널리스트 평균 목표 {method} {bench_mult:,.1f}배**(**{ref_year} EPS 기준 · 보수적**)로 채웠어요. "
                f"보수/낙관은 ±20%. 자유롭게 바꾸세요.　참고 · 현재 {method} ≈ {cur_mult:,.1f}배")
 elif cur_mult:
     st.caption(f"이 회사가 받을 만한 **{method} 배수**를 정하세요.　참고 · 현재 {method} ≈ **{cur_mult:,.1f}배**")
