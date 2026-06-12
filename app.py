@@ -34,6 +34,7 @@ for _k in ("an_mean", "an_median", "an_low", "an_high"):
     st.session_state.setdefault(_k, 0.0)
 st.session_state.setdefault("an_n", 0)
 st.session_state.setdefault("naver_code", "")
+st.session_state.setdefault("us_symbol", "")
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +187,53 @@ def recent_targets(code6: str, want: int = 5):
         return []
 
 
+def _drop_outliers(recs, band: float = 0.35):
+    """목표가가 중앙값에서 ±band 밖이면 '특히 다른 값'으로 보고 제외. 4건 이상일 때만 적용.
+    반환: (남긴 목록, 제외된 목록)"""
+    if len(recs) < 4:
+        return recs, []
+    ts = sorted(r["target"] for r in recs)
+    n = len(ts)
+    med = ts[n // 2] if n % 2 else (ts[n // 2 - 1] + ts[n // 2]) / 2
+    if med <= 0:
+        return recs, []
+    lo, hi = med * (1 - band), med * (1 + band)
+    kept = [r for r in recs if lo <= r["target"] <= hi]
+    dropped = [r for r in recs if not (lo <= r["target"] <= hi)]
+    return (kept or recs), dropped
+
+
+@st.cache_data(ttl=1800, show_spinner="최근 애널리스트 목표가 불러오는 중...")
+def us_recent_targets(symbol: str, months: int = 2, want: int = 12):
+    """야후 upgrades_downgrades에서 미국 종목의 최근 N개월 증권사별 목표가 수집.
+    같은 증권사는 가장 최근 1건. 어떤 오류에도 [] 반환."""
+    try:
+        ud = yf.Ticker(symbol).upgrades_downgrades
+        if ud is None or len(ud) == 0 or "currentPriceTarget" not in ud.columns:
+            return []
+        ud = ud.copy()
+        try:
+            if getattr(ud.index, "tz", None) is not None:
+                ud.index = ud.index.tz_localize(None)
+        except Exception:
+            pass
+        cutoff = pd.Timestamp.now() - pd.DateOffset(months=months)
+        ud = ud[ud.index >= cutoff].sort_index(ascending=False)
+        out, seen = [], set()
+        for dt, row in ud.iterrows():
+            firm = str(row.get("Firm") or "").strip()
+            tgt = _to_num(row.get("currentPriceTarget"))
+            if not firm or firm in seen or tgt <= 0:
+                continue
+            seen.add(firm)
+            out.append({"date": str(pd.Timestamp(dt).date()), "broker": firm, "target": tgt})
+            if len(out) >= want:
+                break
+        return out
+    except Exception:
+        return []
+
+
 def apply_fetched(data: dict):
     """조회 결과를 입력 칸(세션)에 채워 넣는다. None은 0으로."""
     st.session_state["currency"] = data.get("currency", "")
@@ -211,6 +259,7 @@ def apply_fetched(data: dict):
     st.session_state["an_n"] = int(data.get("n_analysts") or 0)
     _rc = re.match(r"(\d{6})\.K[SQ]$", data.get("resolved", ""))
     st.session_state["naver_code"] = _rc.group(1) if _rc else ""
+    st.session_state["us_symbol"] = "" if _rc else data.get("resolved", "")
     st.session_state["loaded"] = True
     # 입력 위젯이 새로 불러온 값을 다시 읽도록 위젯 상태 초기화
     for wk in ("w_price", "w_eps_2026", "w_eps_2027", "w_bps_2026", "w_bps_2027",
@@ -515,10 +564,17 @@ cur_mult = (price / ref_base) if ref_base else 0.0
 an_mean = st.session_state.get("an_mean", 0.0)
 an_median = st.session_state.get("an_median", 0.0) or an_mean
 naver_code = st.session_state.get("naver_code", "")
+us_symbol = st.session_state.get("us_symbol", "")
 try:
-    recent = recent_targets(naver_code) if naver_code else []
+    if naver_code:
+        recent, src_label, unit = recent_targets(naver_code), "whynotsellreport.com", "명"
+    elif us_symbol:
+        recent, src_label, unit = us_recent_targets(us_symbol), "Yahoo Finance · 최근 2개월", "곳"
+    else:
+        recent, src_label, unit = [], "", ""
 except Exception:
-    recent = []
+    recent, src_label, unit = [], "", ""
+recent, dropped = _drop_outliers(recent)   # 중앙값에서 ±35% 밖 극단값 제외
 try:
     if recent:
         bench_target = sum(x.get("target", 0) for x in recent) / len(recent)
@@ -567,14 +623,19 @@ def _bench_table(target_price, src_label):
 if bench_target and ref_base:
     with st.container(border=True):
         if recent:
-            st.markdown(f"**📋 최근 애널리스트 리포트 기준 배수**　·　최근 {len(recent)}명")
+            st.markdown(f"**📋 최근 애널리스트 기준 배수**　·　{len(recent)}{unit}")
             _bench_table(bench_target, f"리포트평균 {method}")
             lines = "　".join(f"· {x['date']} {x['broker']} {fmt_price(x['target'])}" for x in recent)
+            drop_note = ""
+            if dropped:
+                drop_note = "　❌제외(극단값): " + ", ".join(
+                    f"{x['broker']} {fmt_price(x['target'])}" for x in dropped)
             st.caption(
-                f"{lines}\n\n"
-                f"평균 목표주가 **{fmt_price(bench_target)}** (서로 다른 애널리스트 {len(recent)}명, 같은 사람은 최근 1건만).  "
-                "같은 목표가라도 **어느 해 EPS로 나누냐**에 따라 배수가 달라요 — 애널리스트는 보통 **다음 해(2027) 실적** "
-                "기준으로 목표가를 잡으니 **2027 기준 배수가 더 현실적**이에요. (출처: whynotsellreport.com)")
+                f"{lines}{drop_note}\n\n"
+                f"평균 목표주가 **{fmt_price(bench_target)}** (서로 다른 {len(recent)}{unit}, 같은 곳은 최근 1건, 극단값 제외).  "
+                "같은 목표가라도 **어느 해 EPS로 나누냐**에 따라 배수가 달라요 — 보통 **다음 해(2027) 실적** "
+                "기준이 **더 보수적**이에요. "
+                f"(출처: {src_label})")
         else:
             an_n = st.session_state.get("an_n", 0)
             st.markdown("**📋 애널리스트 기준 배수 (참고)**"
