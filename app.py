@@ -147,32 +147,43 @@ def _wns_stock_id(code6: str):
     return None
 
 
+def _to_num(v):
+    """문자열/숫자/None을 안전하게 float로. 실패 시 0.0."""
+    try:
+        return float(str(v).replace(",", "").strip())
+    except Exception:
+        return 0.0
+
+
 @st.cache_data(ttl=1800, show_spinner="최근 애널리스트 리포트 불러오는 중...")
 def recent_targets(code6: str, want: int = 5):
     """whynotsellreport.com API에서 최근 애널리스트 리포트 목표가를 수집.
-    같은 애널리스트(보통 증권사당 1명 담당)는 가장 최근 1건만. 한국 종목만. 실패 시 []."""
-    sid = _wns_stock_id(code6)
-    if not sid:
-        return []
+    같은 애널리스트(보통 증권사당 1명 담당)는 가장 최근 1건만. 한국 종목만.
+    네트워크/형식 문제 등 어떤 오류에도 절대 예외를 던지지 않고 []를 반환한다."""
     try:
-        r = requests.get(f"{_WNS}/api/reports/sid/{sid}", headers=_WNS_HEADERS, timeout=10)
+        sid = _wns_stock_id(code6)
+        if not sid:
+            return []
+        r = requests.get(f"{_WNS}/api/reports/sid/{sid}", headers=_WNS_HEADERS, timeout=8)
         data = r.json()
+        if not isinstance(data, list):
+            return []
+        rows = [x for x in data
+                if isinstance(x, dict) and _to_num(x.get("price")) > 0 and x.get("date")]
+        rows.sort(key=lambda x: str(x.get("date", "")), reverse=True)  # 최신순
+        out, seen = [], set()
+        for x in rows:
+            analyst = str(x.get("analyst_name") or "").strip()
+            if not analyst or analyst.lower() == "tbd" or analyst in seen:
+                continue
+            seen.add(analyst)
+            out.append({"date": str(x["date"])[:10], "broker": analyst,
+                        "target": int(_to_num(x["price"]))})
+            if len(out) >= want:
+                break
+        return out
     except Exception:
         return []
-    if not isinstance(data, list):
-        return []
-    rows = [x for x in data if (x.get("price") or 0) > 0 and x.get("date")]
-    rows.sort(key=lambda x: x.get("date", ""), reverse=True)  # 최신순
-    out, seen = [], set()
-    for x in rows:
-        analyst = (x.get("analyst_name") or "").strip()
-        if not analyst or analyst.lower() == "tbd" or analyst in seen:
-            continue
-        seen.add(analyst)
-        out.append({"date": x["date"][:10], "broker": analyst, "target": int(x["price"])})
-        if len(out) >= want:
-            break
-    return out
 
 
 def apply_fetched(data: dict):
@@ -503,12 +514,18 @@ cur_mult = (price / ref_base) if ref_base else 0.0
 an_mean = st.session_state.get("an_mean", 0.0)
 an_median = st.session_state.get("an_median", 0.0) or an_mean
 naver_code = st.session_state.get("naver_code", "")
-recent = recent_targets(naver_code) if naver_code else []
-if recent:
-    bench_target = sum(x["target"] for x in recent) / len(recent)
-elif an_median:
-    bench_target = an_median
-else:
+try:
+    recent = recent_targets(naver_code) if naver_code else []
+except Exception:
+    recent = []
+try:
+    if recent:
+        bench_target = sum(x.get("target", 0) for x in recent) / len(recent)
+    elif an_median:
+        bench_target = an_median
+    else:
+        bench_target = 0.0
+except Exception:
     bench_target = 0.0
 bench_mult = (bench_target / ref_base) if (bench_target and ref_base) else 0.0
 
