@@ -5,3 +5,11 @@ enableXsrfProtection = false
 
 [browser]
 gatherUsageStats = false
+
+# 다크모드 사용자도 동일한 밝은 디자인으로 보이도록 라이트 테마 고정
+[theme]
+base = "light"
+primaryColor = "#6c5ce7"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f6f7fb"
+textColor = "#2d3436"

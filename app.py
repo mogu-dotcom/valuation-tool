@@ -386,7 +386,11 @@ st.markdown("""
 html, body, [class*="css"], .stApp, button, input, textarea, select {
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
-.stApp { color:#2d3436; }
+/* 라이트모드 고정 — 다크모드 사용자도 동일하게 밝게 보이도록 강제 */
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], .block-container {
+    background-color: #ffffff !important;
+}
+.stApp { color:#2d3436 !important; }
 #MainMenu, footer {visibility: hidden;}
 /* 상단 흰색 헤더 바 + 데코 라인 완전히 제거 (공간까지) */
 header[data-testid="stHeader"], [data-testid="stDecoration"] {display: none !important; height: 0 !important;}
