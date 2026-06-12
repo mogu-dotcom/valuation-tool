@@ -496,24 +496,44 @@ st.divider()
 st.markdown('<div class="sec"><span class="num">4</span>목표 배수 입력</div>', unsafe_allow_html=True)
 
 ref_base = base_by_year["2026"] or base_by_year["2027"]
+ref_year = "2026" if base_by_year["2026"] else "2027"
 cur_mult = (price / ref_base) if ref_base else 0.0
-sug_mid = round(cur_mult, 1) if cur_mult else 10.0
+
+# --- 애널리스트 기준 목표가를 먼저 계산 (디폴트 배수 + 아래 패널에서 공용) ---
+an_mean = st.session_state.get("an_mean", 0.0)
+an_median = st.session_state.get("an_median", 0.0) or an_mean
+naver_code = st.session_state.get("naver_code", "")
+recent = recent_targets(naver_code) if naver_code else []
+if recent:
+    bench_target = sum(x["target"] for x in recent) / len(recent)
+elif an_median:
+    bench_target = an_median
+else:
+    bench_target = 0.0
+bench_mult = (bench_target / ref_base) if (bench_target and ref_base) else 0.0
+
+# 디폴트 목표 배수: 애널리스트 평균 목표 배수를 '중립'으로, 보수/낙관은 ±20%
+basis = bench_mult or cur_mult or 10.0
+sug_mid = round(basis, 1)
 sug_low = round(sug_mid * 0.8, 1)
 sug_high = round(sug_mid * 1.2, 1)
 
-if cur_mult:
-    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 정하세요. 한 번 정하면 결과에서 연도(2026/2027)만 "
-               f"바꿔가며 비교할 수 있어요.　참고 · 현재 {method} ≈ **{cur_mult:,.1f}배**")
+if bench_mult:
+    st.caption(f"**중립** 기본값을 **애널리스트 평균 목표 {method} {bench_mult:,.1f}배**({ref_year} EPS 기준)로 채웠어요. "
+               f"보수/낙관은 ±20%. 자유롭게 바꾸세요.　참고 · 현재 {method} ≈ {cur_mult:,.1f}배")
+elif cur_mult:
+    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 정하세요.　참고 · 현재 {method} ≈ **{cur_mult:,.1f}배**")
 else:
-    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 정하세요. 한 번 정하면 결과에서 연도만 바꿔 비교할 수 있어요.")
+    st.caption(f"이 회사가 받을 만한 **{method} 배수**를 정하세요.")
 
 t1, t2, t3 = st.columns(3)
-m_low = t1.number_input("🔵 보수", min_value=0.0, value=sug_low, step=0.1, key=f"mult_low_{method}")
-m_mid = t2.number_input("⚪ 중립", min_value=0.0, value=sug_mid, step=0.1, key=f"mult_mid_{method}")
-m_high = t3.number_input("🔴 낙관", min_value=0.0, value=sug_high, step=0.1, key=f"mult_high_{method}")
+# 키에 기본값 포함 → 새 종목(=새 애널 평균)이면 자동 리셋, 같으면 사용자 수정값 유지
+m_low = t1.number_input("🔵 보수", min_value=0.0, value=sug_low, step=0.1, key=f"mult_low_{method}_{sug_low}")
+m_mid = t2.number_input("⚪ 중립", min_value=0.0, value=sug_mid, step=0.1, key=f"mult_mid_{method}_{sug_mid}")
+m_high = t3.number_input("🔴 낙관", min_value=0.0, value=sug_high, step=0.1, key=f"mult_high_{method}_{sug_high}")
 
-# 기준 배수 (참고): ① 네이버 최근 리포트 목표가 → 실패 시 ② 야후 중앙값
-# 목표가를 2026·2027 EPS 양쪽으로 환산해 표로 표시 (리포트가 어느 해 기준인지 알 수 없으므로)
+
+# 기준 배수 표(참고): 목표가를 2026·2027 EPS 양쪽으로 환산 (리포트가 어느 해 기준인지 알 수 없으므로)
 def _bench_table(target_price, src_label):
     md = f"| EPS 기준 | 현재 {method} | {src_label} |\n|:--|--:|--:|\n"
     any_row = False
@@ -526,30 +546,24 @@ def _bench_table(target_price, src_label):
         st.markdown(md)
 
 
-an_mean = st.session_state.get("an_mean", 0.0)
-naver_code = st.session_state.get("naver_code", "")
-recent = recent_targets(naver_code) if naver_code else []
-if (recent or an_mean) and ref_base:
+if bench_target and ref_base:
     with st.container(border=True):
         if recent:
-            avg_t = sum(x["target"] for x in recent) / len(recent)
             st.markdown(f"**📋 최근 애널리스트 리포트 기준 배수**　·　최근 {len(recent)}명")
-            _bench_table(avg_t, f"리포트평균 {method}")
+            _bench_table(bench_target, f"리포트평균 {method}")
             lines = "　".join(f"· {x['date']} {x['broker']} {fmt_price(x['target'])}" for x in recent)
             st.caption(
                 f"{lines}\n\n"
-                f"평균 목표주가 **{fmt_price(avg_t)}** (서로 다른 애널리스트 {len(recent)}명, 같은 사람은 최근 1건만).  "
+                f"평균 목표주가 **{fmt_price(bench_target)}** (서로 다른 애널리스트 {len(recent)}명, 같은 사람은 최근 1건만).  "
                 "같은 목표가라도 **어느 해 EPS로 나누냐**에 따라 배수가 달라요 — 애널리스트는 보통 **다음 해(2027) 실적** "
-                "기준으로 목표가를 잡으니 **2027 기준 배수가 더 현실적**이에요. 5번에서 계산할 연도와 **같은 기준의 배수**를 쓰세요. "
-                "(출처: whynotsellreport.com)")
+                "기준으로 목표가를 잡으니 **2027 기준 배수가 더 현실적**이에요. (출처: whynotsellreport.com)")
         else:
             an_n = st.session_state.get("an_n", 0)
-            an_median = st.session_state.get("an_median", 0.0) or an_mean
             st.markdown("**📋 애널리스트 기준 배수 (참고)**"
                         + (f"　·　분석가 {an_n}명" if an_n else ""))
-            _bench_table(an_median, f"애널 중앙값 {method}")
+            _bench_table(bench_target, f"애널 중앙값 {method}")
             st.caption(
-                f"목표주가 **중앙값 {fmt_price(an_median)}** 기준. 같은 목표가라도 어느 해 EPS로 나누냐에 따라 배수가 달라요"
+                f"목표주가 **중앙값 {fmt_price(bench_target)}** 기준. 같은 목표가라도 어느 해 EPS로 나누냐에 따라 배수가 달라요"
                 "(애널리스트는 보통 다음 해 실적 기준 → **2027 기준이 현실적**). "
                 "한국 종목은 최근 리포트(whynotsellreport.com)를 우선 쓰고, 못 불러오면 이 컨센서스로 대체돼요.")
 
