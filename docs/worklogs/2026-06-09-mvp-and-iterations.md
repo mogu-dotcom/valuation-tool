@@ -312,3 +312,37 @@ curl -s -o /dev/null -w "%{http_code}\n" https://valuation-tool-production-248e.
 ### 다음 세션 메모
 - `naver_code` 세션키는 사실 whynotsellreport용(리네이밍 안 함). 헷갈리지 말 것.
 - whynotsellreport도 소규모 사이트라 다운/차단 가능 → 그때는 야후 중앙값으로 자동 폴백(앱 안 죽음). 운영에서 어느 쪽인지는 패널 제목으로 구분(11장 (H) 참고, "최근 애널리스트 리포트"=whynotsell 성공 / "애널리스트 기준 배수(참고)"=폴백).
+
+---
+
+## 13. 업데이트 — 미국 애널 목표가(야후) · 2027 통일 · 디자인 마감 (2026-06-12)
+
+### 커밋 (555c8ba 워크로그 이후)
+- `7385522` **미국 종목 애널 목표가 = 야후 `upgrades_downgrades`** (최근 2개월, 증권사별, 극단값 제외)
+- `b9a52c9` 5번 결과 **기준연도 기본값 2026 → 2027**
+- `7d67e50` **UI 마감 정리**(설명/주석 타이포·노트·메트릭·표·여백)
+
+### ★ 미국 애널 목표가 소스 (재조사 불필요)
+- **`yf.Ticker(symbol).upgrades_downgrades`** (US 종목은 채워짐, KR은 비어있음). DataFrame:
+  - index = 발표일(Timestamp), 컬럼 = `Firm`(증권사), **`currentPriceTarget`(목표가)**, `priorPriceTarget`, `ToGrade`, `priceTargetAction`(Raises/Lowers).
+  - → **API 키 없이** 날짜·증권사·목표가를 다 얻음. (앞 11장의 "야후는 날짜별 개별 목표가 없음" 결론을 이걸로 뒤집음 — `upgrades_downgrades`에 있었음!)
+- `us_recent_targets(symbol, months=2, want=12)`: tz 제거 → `now - DateOffset(months=2)` 이후 필터 → **증권사별 최근 1건** → `{date, broker, target}`. 전부 try/except로 [] 보장.
+- **공통 극단값 제거 `_drop_outliers(recs, band=0.35)`**: 4건↑일 때 **중앙값 ±35% 밖 제외**(KR·US 둘 다 적용). 제외분은 패널 캡션에 "❌제외"로 노출.
+
+### 소스 분기 (섹션 4)
+- `naver_code` 있으면 → whynotsellreport(`recent_targets`, unit="명").
+- `us_symbol` 있으면 → 야후(`us_recent_targets`, unit="곳", src="Yahoo Finance · 최근 2개월").
+- 둘 다 없으면 → 야후 중앙값(an_median) 폴백.
+- `apply_fetched`가 resolved로 `naver_code`(KR 6자리) 또는 `us_symbol`(그 외) 세팅. setdefault에 `us_symbol` 추가.
+
+### 보수적 기준 통일 (2027)
+- 목표배수 디폴트(섹션4)도, 결과 기본연도(섹션5 `year_sel_result` default)도 **2027**. EPS가 더 커서 배수가 낮게(보수적) 잡힘.
+
+### 디자인 마감 (7d67e50) — CSS 위주, 로직 무변경
+- 전역 캡션 톤 통일(`[data-testid="stCaptionContainer"]` 색·줄간격), `.note` 콜아웃 클래스(하단 면책 등),
+  `[data-testid="stMetric"]` 은은한 카드, `.stMarkdown table` 표 스타일, hr 얇게, 히어로 톤다운.
+- 방향: **심플·정돈 우선(요란함 X)**. 추가 시 이 톤 유지.
+
+### 현재 기능 전체 요약 (스냅샷)
+PER/PBR/PSR + (PER에) PEG(성장률 수정가능) · 한국[whynotsellreport]/미국[야후 upgrades_downgrades] 최근 애널 목표가(2개월·극단값제외)
+· 목표배수 디폴트=애널 평균(2027 보수적) · 콤마 입력 · 보수/중립/낙관 시나리오 · 2026/2027 비교 · 한국식 색상 · 깔끔 디자인.
