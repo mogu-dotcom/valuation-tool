@@ -398,14 +398,31 @@ html, body, [class*="css"], .stApp, button, input, textarea, select {
 /* 구분선 — 얇고 은은하게 */
 hr {margin:1.1rem 0 !important; border:none !important; border-top:1px solid #eef0f4 !important;}
 
-/* 히어로 (살짝 톤 다운) */
+/* 히어로 — 모던/심플 (밝은 카드 + 그라데이션 아이콘 마크) */
 .hero {
-    background: linear-gradient(135deg, #6c5ce7 0%, #8e7bf0 55%, #a29bfe 100%);
-    border-radius: 18px; padding: 24px 26px; margin-bottom: 16px;
-    box-shadow: 0 6px 18px rgba(108,92,231,.18);
+    display:flex; align-items:center; gap:16px;
+    padding: 22px 24px; margin: 2px 0 18px;
+    background: linear-gradient(180deg,#fbfaff 0%, #ffffff 70%);
+    border: 1px solid #ece9f8; border-radius: 20px;
+    box-shadow: 0 1px 2px rgba(30,25,60,.03);
 }
-.hero h1 {color:#fff; font-size: 1.6rem; font-weight: 800; margin:0; letter-spacing:-.5px;}
-.hero p {color: rgba(255,255,255,.92); margin:.4rem 0 0; font-size:.92rem;}
+.hero-mark {
+    flex:0 0 auto; width:52px; height:52px; border-radius:16px;
+    display:flex; align-items:center; justify-content:center; font-size:1.5rem;
+    background: linear-gradient(135deg,#6c5ce7,#a18cf5);
+    box-shadow: 0 8px 18px rgba(108,92,231,.32);
+}
+.hero-body {min-width:0;}
+.hero-kicker {font-size:.66rem; font-weight:800; letter-spacing:.14em;
+    text-transform:uppercase; color:#9a8ee8; margin-bottom:3px;}
+.hero h1 {font-size:1.55rem; font-weight:800; letter-spacing:-.6px; margin:0;
+    color:#20242e; line-height:1.12;}
+.hero h1 .grad {background:linear-gradient(118deg,#6c5ce7,#9d6bf2);
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;}
+.hero p {margin:6px 0 0; font-size:.85rem; color:#8b919c;}
+.hero-tags {display:flex; flex-wrap:wrap; gap:5px; margin-top:10px;}
+.hero-tags span {font-size:.7rem; font-weight:700; color:#6f6889;
+    background:#f4f2fc; border:1px solid #ece9f8; border-radius:7px; padding:2px 8px;}
 
 /* 섹션 라벨 */
 .sec {font-weight: 800; font-size: 1.04rem; margin: 8px 0 4px; color:#2d3436;}
@@ -465,8 +482,13 @@ hr {margin:1.1rem 0 !important; border:none !important; border-top:1px solid #ee
 # ---------------------------------------------------------------------------
 st.markdown("""
 <div class="hero">
-  <h1>📈 밸류에이션 계산기</h1>
-  <p>종목을 고르고 목표 배수만 넣으면 <b>목표주가</b>와 <b>상승여력</b>이 바로 나와요 · PER · PBR · PSR · 한국/미국</p>
+  <div class="hero-mark">📈</div>
+  <div class="hero-body">
+    <div class="hero-kicker">STOCK VALUATION</div>
+    <h1>밸류에이션 <span class="grad">계산기</span></h1>
+    <p>종목과 목표 배수만 넣으면 목표주가·상승여력을 즉시 계산해요</p>
+    <div class="hero-tags"><span>PER</span><span>PBR</span><span>PSR</span><span>PEG</span><span>🇰🇷 한국</span><span>🇺🇸 미국</span></div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
