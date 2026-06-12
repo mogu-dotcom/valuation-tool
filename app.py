@@ -129,9 +129,9 @@ def fetch_data(code: str):
 
 
 @st.cache_data(ttl=1800, show_spinner="최근 애널리스트 리포트 불러오는 중...")
-def recent_targets(code6: str, want: int = 3, scan: int = 6):
-    """네이버 금융 종목분석 리포트에서 최근 증권사 목표가를 최대 want개 수집.
-    한국 6자리 코드만. 차단/실패 시 빈 리스트 반환(→ 야후 중앙값으로 폴백)."""
+def recent_targets(code6: str, want: int = 3, scan: int = 18, max_fetch: int = 8):
+    """네이버 금융 종목분석 리포트에서 서로 다른 증권사의 최근 목표가를 최대 want개 수집.
+    같은 증권사(하우스)는 가장 최근 1건만 사용(중복 제거). 한국 6자리 코드만. 실패 시 []."""
     if not code6:
         return []
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -143,7 +143,7 @@ def recent_targets(code6: str, want: int = 3, scan: int = 6):
         rows = [x for x in re.findall(r"<tr[^>]*>(.*?)</tr>", r.text, re.S) if "company_read" in x]
     except Exception:
         return []
-    out = []
+    out, seen, fetches = [], set(), 0
     for row in rows[:scan]:
         mnid = re.search(r"nid=(\d+)", row)
         if not mnid:
@@ -153,6 +153,12 @@ def recent_targets(code6: str, want: int = 3, scan: int = 6):
         cells = [c for c in cells if c]
         date = next((c for c in cells if re.match(r"\d{2}\.\d{2}\.\d{2}$", c)), "")
         broker = next((c for c in cells if "증권" in c or "투자" in c), "?")
+        if broker in seen:          # 같은 증권사는 더 최근 건이 이미 있으니 건너뜀
+            continue
+        if fetches >= max_fetch:
+            break
+        seen.add(broker)
+        fetches += 1
         try:
             d = requests.get("https://finance.naver.com/research/company_read.naver"
                              f"?nid={mnid.group(1)}", headers=headers, timeout=4)
