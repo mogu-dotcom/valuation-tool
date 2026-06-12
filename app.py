@@ -386,39 +386,68 @@ st.markdown("""
 html, body, [class*="css"], .stApp, button, input, textarea, select {
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
+.stApp { color:#2d3436; }
 #MainMenu, footer, header [data-testid="stToolbar"] {visibility: hidden;}
 .block-container {padding-top: 1.4rem; padding-bottom: 3rem; max-width: 760px;}
 
-/* 히어로 */
+/* 설명·주석 — 차분하고 읽기 쉽게 (전역 통일) */
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p,
+.stCaption, .stCaption p {
+    color:#767e89 !important; line-height:1.62 !important; font-size:.82rem !important;
+}
+/* 구분선 — 얇고 은은하게 */
+hr {margin:1.1rem 0 !important; border:none !important; border-top:1px solid #eef0f4 !important;}
+
+/* 히어로 (살짝 톤 다운) */
 .hero {
     background: linear-gradient(135deg, #6c5ce7 0%, #8e7bf0 55%, #a29bfe 100%);
-    border-radius: 20px; padding: 26px 28px; margin-bottom: 18px;
-    box-shadow: 0 10px 30px rgba(108,92,231,.28);
+    border-radius: 18px; padding: 24px 26px; margin-bottom: 16px;
+    box-shadow: 0 6px 18px rgba(108,92,231,.18);
 }
-.hero h1 {color:#fff; font-size: 1.7rem; font-weight: 800; margin:0; letter-spacing:-.5px;}
-.hero p {color: rgba(255,255,255,.92); margin:.4rem 0 0; font-size:.96rem;}
+.hero h1 {color:#fff; font-size: 1.6rem; font-weight: 800; margin:0; letter-spacing:-.5px;}
+.hero p {color: rgba(255,255,255,.92); margin:.4rem 0 0; font-size:.92rem;}
 
 /* 섹션 라벨 */
-.sec {font-weight: 800; font-size: 1.05rem; margin: 6px 0 2px; color:#2d3436;}
+.sec {font-weight: 800; font-size: 1.04rem; margin: 8px 0 4px; color:#2d3436;}
 .sec .num {display:inline-flex; align-items:center; justify-content:center;
     width:22px; height:22px; border-radius:7px; background:#efeafe; color:#6c5ce7;
-    font-size:.8rem; font-weight:800; margin-right:7px;}
+    font-size:.8rem; font-weight:800; margin-right:8px;}
+
+/* 노트(콜아웃) — 안내문을 깔끔한 박스로 */
+.note {background:#f8f9fc; border-left:3px solid #d6dbf0; border-radius:8px;
+    padding:9px 13px; font-size:.8rem; color:#616873; line-height:1.6; margin:2px 0 6px;}
+.note b {color:#474c54;}
+
+/* 입력 카드 모서리 정리 */
+[data-testid="stVerticalBlockBorderWrapper"] {border-radius:14px !important;}
+
+/* 메트릭 — 은은한 카드로 통일 */
+[data-testid="stMetric"] {background:#fafbfd; border:1px solid #eef0f5;
+    border-radius:12px; padding:10px 13px 8px;}
+[data-testid="stMetricLabel"] p {font-size:.76rem !important; color:#767e89 !important;}
+[data-testid="stMetricValue"] {font-size:1.22rem !important; font-weight:800;}
+
+/* 마크다운 표(애널 기준 배수) — 깔끔하게 */
+.stMarkdown table {border-collapse:collapse; width:100%; font-size:.85rem; margin:6px 0 2px;}
+.stMarkdown thead th {background:#f6f7fb; color:#57606f; font-weight:700;
+    padding:8px 11px; border-bottom:1px solid #e9ebf0;}
+.stMarkdown tbody td {padding:8px 11px; border-bottom:1px solid #f1f2f6; color:#3a3f47;}
+.stMarkdown th:first-child, .stMarkdown td:first-child {text-align:left;}
+.stMarkdown th:not(:first-child), .stMarkdown td:not(:first-child) {text-align:right;}
 
 /* 결과 헤드라인 */
-.headline {
-    border-radius: 18px; padding: 22px 24px; margin: 6px 0 14px; color:#fff;
-    box-shadow: 0 8px 24px rgba(0,0,0,.10);
-}
-.headline .cap {font-size:.82rem; opacity:.9; font-weight:600; letter-spacing:.3px;}
-.headline .price {font-size: 2.15rem; font-weight: 800; margin:.15rem 0 .1rem; letter-spacing:-1px;}
-.headline .up {font-size: 1.05rem; font-weight: 700;}
+.headline {border-radius: 16px; padding: 22px 24px; margin: 6px 0 14px; color:#fff;
+    box-shadow: 0 6px 16px rgba(0,0,0,.08);}
+.headline .cap {font-size:.82rem; opacity:.92; font-weight:600; letter-spacing:.3px;}
+.headline .price {font-size: 2.1rem; font-weight: 800; margin:.15rem 0 .1rem; letter-spacing:-1px;}
+.headline .up {font-size: 1.02rem; font-weight: 700;}
 .headline .from {font-size:.8rem; opacity:.92; margin-top:.5rem;}
 
 /* 시나리오 카드 */
 .scn-row {display:flex; gap:10px; margin: 2px 0 8px;}
-.scn {flex:1; background:#fff; border:1px solid #eee; border-radius:14px;
-    padding:14px 10px; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,.04);}
-.scn.mid {border:2px solid #6c5ce7; box-shadow:0 4px 16px rgba(108,92,231,.16);}
+.scn {flex:1; background:#fff; border:1px solid #eef0f4; border-radius:14px;
+    padding:14px 10px; text-align:center; box-shadow:0 1px 6px rgba(0,0,0,.03);}
+.scn.mid {border:1.5px solid #6c5ce7; box-shadow:0 3px 12px rgba(108,92,231,.13);}
 .scn .lab {font-size:.82rem; font-weight:700; color:#636e72;}
 .scn .mlt {font-size:.74rem; color:#b2bec3; margin:.1rem 0 .4rem;}
 .scn .pr {font-size:1.08rem; font-weight:800; color:#2d3436;}
@@ -778,5 +807,7 @@ else:
             else:
                 st.caption("성장률을 **0보다 큰 값**으로 입력해야 PEG를 계산할 수 있어요.")
 
-st.markdown("<br>", unsafe_allow_html=True)
-st.caption("⚠️ 교육용 도구입니다. 자동 추정치는 부정확할 수 있으니 투자 판단의 유일한 근거로 쓰지 마세요.")
+st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='note'>⚠️ <b>교육용 도구</b>입니다. 자동 추정치는 부정확할 수 있으니 "
+    "투자 판단의 유일한 근거로 쓰지 마세요.</div>", unsafe_allow_html=True)
