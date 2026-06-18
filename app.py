@@ -21,7 +21,6 @@ st.set_page_config(page_title="밸류에이션 계산기", page_icon="📈", lay
 # 한국식 상승/하락 색상 (상승=빨강, 하락=파랑)
 UP_COLOR = "#e8392b"     # 빨강 (상승여력 +)
 DOWN_COLOR = "#1f6fde"   # 파랑 (상승여력 -)
-BRAND = "#6c5ce7"        # 포인트 보라
 
 FIELDS = ["price", "eps_2026", "eps_2027", "bps_2026", "bps_2027",
           "rev_2026", "rev_2027", "shares", "sps_2026", "sps_2027"]
@@ -30,7 +29,7 @@ for f in FIELDS:
 st.session_state.setdefault("currency", "")
 st.session_state.setdefault("name", "")
 st.session_state.setdefault("loaded", False)
-for _k in ("an_mean", "an_median", "an_low", "an_high"):
+for _k in ("an_mean", "an_median"):
     st.session_state.setdefault(_k, 0.0)
 st.session_state.setdefault("an_n", 0)
 st.session_state.setdefault("naver_code", "")
@@ -99,8 +98,6 @@ def fetch_data(code: str):
                 "rev_2026": None, "rev_2027": None,
                 "target_mean": info.get("targetMeanPrice"),
                 "target_median": info.get("targetMedianPrice"),
-                "target_low": info.get("targetLowPrice"),
-                "target_high": info.get("targetHighPrice"),
                 "n_analysts": info.get("numberOfAnalystOpinions"),
             }
             try:
@@ -254,8 +251,6 @@ def apply_fetched(data: dict):
     # 애널리스트 목표주가 컨센서스
     st.session_state["an_mean"] = float(data.get("target_mean") or 0.0)
     st.session_state["an_median"] = float(data.get("target_median") or 0.0)
-    st.session_state["an_low"] = float(data.get("target_low") or 0.0)
-    st.session_state["an_high"] = float(data.get("target_high") or 0.0)
     st.session_state["an_n"] = int(data.get("n_analysts") or 0)
     _rc = re.match(r"(\d{6})\.K[SQ]$", data.get("resolved", ""))
     st.session_state["naver_code"] = _rc.group(1) if _rc else ""
@@ -302,31 +297,6 @@ def fmt_price(v):
         return "-"
     sym = cur_symbol()
     return f"{sym}{v:,.0f}" if is_krw() else f"{sym}{v:,.2f}"
-
-
-def fmt_big(v):
-    """매출 등 큰 금액을 조/억(원) 또는 B/M($)로 읽기 쉽게."""
-    if not v:
-        return "-"
-    if is_krw():
-        if abs(v) >= 1e12:
-            return f"{v/1e12:,.1f}조원"
-        if abs(v) >= 1e8:
-            return f"{v/1e8:,.0f}억원"
-        return f"{v:,.0f}원"
-    if abs(v) >= 1e9:
-        return f"${v/1e9:,.1f}B"
-    if abs(v) >= 1e6:
-        return f"${v/1e6:,.0f}M"
-    return f"${v:,.0f}"
-
-
-def fmt_shares(v):
-    if not v:
-        return "-"
-    if v >= 1e8:
-        return f"{v/1e8:,.1f}억 주"
-    return f"{v:,.0f} 주"
 
 
 def fmt_num(v):
@@ -689,7 +659,8 @@ if bench_target and ref_base:
                     f"{x['broker']} {fmt_price(x['target'])}" for x in dropped)
             st.caption(
                 f"{lines}{drop_note}\n\n"
-                f"평균 목표주가 **{fmt_price(bench_target)}** (서로 다른 {len(recent)}{unit}, 같은 곳은 최근 1건, 극단값 제외).  "
+                f"평균 목표주가 **{fmt_price(bench_target)}** (서로 다른 {len(recent)}{unit}, 같은 곳은 최근 1건"
+                f"{', 극단값 제외' if dropped else ''}).  "
                 "같은 목표가라도 **어느 해 EPS로 나누냐**에 따라 배수가 달라요 — 보통 **다음 해(2027) 실적** "
                 "기준이 **더 보수적**이에요. "
                 f"(출처: {src_label})")
@@ -750,7 +721,6 @@ else:
 
     # 헤드라인 (중립 시나리오)
     _, mid_mult, mid_target, mid_up = scns[1]
-    hcolor = UP_COLOR if mid_up >= 0 else DOWN_COLOR
     arrow = "▲" if mid_up >= 0 else "▼"
     grad = (f"linear-gradient(135deg,{UP_COLOR} 0%, #ff6b5e 100%)" if mid_up >= 0
             else f"linear-gradient(135deg,{DOWN_COLOR} 0%, #5b9bf0 100%)")
